@@ -1,21 +1,17 @@
-FROM node:20-slim AS base
+FROM node:20-alpine AS base
 
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # Install ffmpeg with libass for subtitle burn-in, and fonts for CJK subtitles
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg fonts-noto-cjk \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache ffmpeg font-noto-cjk
 
 # --- Dependencies ---
 FROM base AS deps
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 make g++ \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile && pnpm rebuild better-sqlite3
 
 # --- Build ---
 FROM deps AS builder
