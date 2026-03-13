@@ -9,6 +9,7 @@ import {
 } from "next/font/google";
 import "../globals.css";
 import { FingerprintProvider } from "@/components/fingerprint-provider";
+import { Toaster } from "sonner";
 
 const playfair = Playfair_Display({
   subsets: ["latin"],
@@ -53,6 +54,7 @@ export default async function LocaleLayout({
       <body className="min-h-screen bg-background font-sans antialiased">
         <NextIntlClientProvider messages={messages}>
           <FingerprintProvider>{children}</FingerprintProvider>
+          <Toaster position="top-center" />
         </NextIntlClientProvider>
       </body>
     </html>
