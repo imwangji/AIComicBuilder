@@ -18,6 +18,7 @@ export interface Provider {
   capability: Capability;
   baseUrl: string;
   apiKey: string;
+  secretKey?: string;
   models: Model[];
 }
 
@@ -27,9 +28,9 @@ export interface ModelRef {
 }
 
 export interface ModelConfig {
-  text: { protocol: Protocol; baseUrl: string; apiKey: string; modelId: string } | null;
-  image: { protocol: Protocol; baseUrl: string; apiKey: string; modelId: string } | null;
-  video: { protocol: Protocol; baseUrl: string; apiKey: string; modelId: string } | null;
+  text: { protocol: Protocol; baseUrl: string; apiKey: string; secretKey?: string; modelId: string } | null;
+  image: { protocol: Protocol; baseUrl: string; apiKey: string; secretKey?: string; modelId: string } | null;
+  video: { protocol: Protocol; baseUrl: string; apiKey: string; secretKey?: string; modelId: string } | null;
 }
 
 interface ModelStore {
@@ -150,6 +151,7 @@ export const useModelStore = create<ModelStore>()(
             protocol: provider.protocol,
             baseUrl: provider.baseUrl,
             apiKey: provider.apiKey,
+            secretKey: provider.secretKey,
             modelId: ref.modelId,
           };
         }

@@ -1,7 +1,21 @@
 import type { AIProvider, TextOptions, ImageOptions } from "../types";
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { ulid } from "ulid";
+
+function generateKlingToken(accessKey: string, secretKey: string): string {
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+  const payload = Buffer.from(
+    JSON.stringify({ iss: accessKey, exp: now + 1800, nbf: now - 5 })
+  ).toString("base64url");
+  const signature = crypto
+    .createHmac("sha256", secretKey)
+    .update(`${header}.${payload}`)
+    .digest("base64url");
+  return `${header}.${payload}.${signature}`;
+}
 
 interface KlingResponse<T> {
   code: number;
@@ -20,20 +34,30 @@ interface KlingTaskData {
 
 export class KlingImageProvider implements AIProvider {
   private apiKey: string;
+  private secretKey: string;
   private baseUrl: string;
   private model: string;
   private uploadDir: string;
 
   constructor(params?: {
     apiKey?: string;
+    secretKey?: string;
     baseUrl?: string;
     model?: string;
     uploadDir?: string;
   }) {
-    this.apiKey = params?.apiKey || process.env.KLING_API_KEY || "";
+    this.apiKey = params?.apiKey || process.env.KLING_ACCESS_KEY || "";
+    this.secretKey = params?.secretKey || process.env.KLING_SECRET_KEY || "";
     this.baseUrl = (params?.baseUrl || "https://api.klingai.com").replace(/\/+$/, "");
     this.model = params?.model || "kling-v1";
     this.uploadDir = params?.uploadDir || process.env.UPLOAD_DIR || "./uploads";
+  }
+
+  private getAuthHeader(): string {
+    if (this.secretKey) {
+      return `Bearer ${generateKlingToken(this.apiKey, this.secretKey)}`;
+    }
+    return `Bearer ${this.apiKey}`;
   }
 
   async generateText(_prompt: string, _options?: TextOptions): Promise<string> {
@@ -46,7 +70,7 @@ export class KlingImageProvider implements AIProvider {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${this.apiKey}`,
+        Authorization: this.getAuthHeader(),
       },
       body: JSON.stringify({
         model: this.model,
@@ -92,7 +116,7 @@ export class KlingImageProvider implements AIProvider {
       await new Promise((resolve) => setTimeout(resolve, 5_000));
 
       const res = await fetch(`${this.baseUrl}/v1/images/generations/${taskId}`, {
-        headers: { Authorization: `Bearer ${this.apiKey}` },
+        headers: { Authorization: this.getAuthHeader() },
       });
 
       if (!res.ok) {

@@ -16,7 +16,10 @@ export function buildVideoPrompt(params: {
   const motionPart = segments.length > 1 ? segments.join("\n") : params.motionScript.trim();
 
   const dialoguePart = params.dialogues?.length
-    ? "\nDialogue:\n" + params.dialogues.map((d) => `${d.characterName}: "${d.text}"`).join("\n")
+    ? "\nDialogue (spoken aloud by characters):\n" +
+      params.dialogues
+        .map((d) => `- ${d.characterName} says: "${d.text}"`)
+        .join("\n")
     : "";
 
   return `${motionPart}\nCamera: ${params.cameraDirection}${dialoguePart}`;

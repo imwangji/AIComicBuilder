@@ -11,6 +11,7 @@ interface ProviderConfig {
   protocol: string;
   baseUrl: string;
   apiKey: string;
+  secretKey?: string;
   modelId: string;
 }
 
@@ -37,6 +38,7 @@ export function createAIProvider(config: ProviderConfig): AIProvider {
     case "kling":
       return new KlingImageProvider({
         apiKey: config.apiKey,
+        secretKey: config.secretKey,
         baseUrl: config.baseUrl,
         model: config.modelId,
       });
@@ -62,6 +64,7 @@ export function createVideoProvider(config: ProviderConfig): VideoProvider {
     case "kling":
       return new KlingVideoProvider({
         apiKey: config.apiKey,
+        secretKey: config.secretKey,
         baseUrl: config.baseUrl,
         model: config.modelId,
       });

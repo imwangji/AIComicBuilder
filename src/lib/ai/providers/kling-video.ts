@@ -1,7 +1,21 @@
 import type { VideoProvider, VideoGenerateParams } from "../types";
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { ulid } from "ulid";
+
+function generateKlingToken(accessKey: string, secretKey: string): string {
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+  const payload = Buffer.from(
+    JSON.stringify({ iss: accessKey, exp: now + 1800, nbf: now - 5 })
+  ).toString("base64url");
+  const signature = crypto
+    .createHmac("sha256", secretKey)
+    .update(`${header}.${payload}`)
+    .digest("base64url");
+  return `${header}.${payload}.${signature}`;
+}
 
 interface KlingResponse<T> {
   code: number;
@@ -18,57 +32,50 @@ interface KlingTaskData {
   };
 }
 
-const VALID_DURATIONS = [5, 10] as const;
 
-function clampDuration(duration: number): number {
-  return VALID_DURATIONS.reduce((prev, curr) =>
-    Math.abs(curr - duration) < Math.abs(prev - duration) ? curr : prev
-  );
-}
-
-function toDataUrl(filePath: string): string {
-  const ext = path.extname(filePath).toLowerCase().replace(".", "");
-  const mime =
-    ext === "jpg" || ext === "jpeg"
-      ? "image/jpeg"
-      : ext === "png"
-        ? "image/png"
-        : ext === "webp"
-          ? "image/webp"
-          : "image/png";
+function toBase64(filePath: string): string {
   let data: Buffer;
   try {
     data = fs.readFileSync(filePath);
   } catch {
     throw new Error(`Kling: frame file not found: ${filePath}`);
   }
-  const base64 = data.toString("base64");
-  return `data:${mime};base64,${base64}`;
+  return data.toString("base64");
 }
 
 export class KlingVideoProvider implements VideoProvider {
   private apiKey: string;
+  private secretKey: string;
   private baseUrl: string;
   private model: string;
   private uploadDir: string;
 
   constructor(params?: {
     apiKey?: string;
+    secretKey?: string;
     baseUrl?: string;
     model?: string;
     uploadDir?: string;
   }) {
-    this.apiKey = params?.apiKey || process.env.KLING_API_KEY || "";
+    this.apiKey = (params?.apiKey || process.env.KLING_ACCESS_KEY || "").trim();
+    this.secretKey = (params?.secretKey || process.env.KLING_SECRET_KEY || "").trim();
     this.baseUrl = (params?.baseUrl || "https://api.klingai.com").replace(/\/+$/, "");
     this.model = params?.model || "kling-v1";
     this.uploadDir = params?.uploadDir || process.env.UPLOAD_DIR || "./uploads";
   }
 
+  private getAuthHeader(): string {
+    if (this.secretKey) {
+      return `Bearer ${generateKlingToken(this.apiKey, this.secretKey)}`;
+    }
+    return `Bearer ${this.apiKey}`;
+  }
+
   async generateVideo(params: VideoGenerateParams): Promise<string> {
-    const duration = clampDuration(params.duration);
+    const duration = params.duration <= 5 ? 5 : 10;
     const aspectRatio = params.ratio ?? "16:9";
-    const imageData = toDataUrl(params.firstFrame);
-    const tailImageData = toDataUrl(params.lastFrame);
+    const imageData = toBase64(params.firstFrame);
+    const tailImageData = toBase64(params.lastFrame);
 
     console.log(
       `[Kling Video] Submitting: model=${this.model}, duration=${duration}s, ratio=${aspectRatio}`
@@ -78,7 +85,7 @@ export class KlingVideoProvider implements VideoProvider {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${this.apiKey}`,
+        Authorization: this.getAuthHeader(),
       },
       body: JSON.stringify({
         model: this.model,
@@ -87,11 +94,14 @@ export class KlingVideoProvider implements VideoProvider {
         tail_image: tailImageData,
         duration,
         aspect_ratio: aspectRatio,
+        sound: "on",
       }),
     });
 
     if (!submitRes.ok) {
-      throw new Error(`Kling video submit failed: ${submitRes.status}`);
+      const errBody = await submitRes.text().catch(() => "");
+      console.error(`[Kling Video] Submit 401 body: ${errBody}`);
+      throw new Error(`Kling video submit failed: ${submitRes.status} ${errBody}`);
     }
 
     const submitJson = (await submitRes.json()) as KlingResponse<{ task_id: string }>;
@@ -124,7 +134,7 @@ export class KlingVideoProvider implements VideoProvider {
       await new Promise((resolve) => setTimeout(resolve, 5_000));
 
       const res = await fetch(`${this.baseUrl}/v1/videos/image2video/${taskId}`, {
-        headers: { Authorization: `Bearer ${this.apiKey}` },
+        headers: { Authorization: this.getAuthHeader() },
       });
 
       if (!res.ok) {

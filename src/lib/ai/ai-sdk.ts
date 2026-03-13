@@ -6,6 +6,7 @@ export interface ProviderConfig {
   protocol: string;
   baseUrl: string;
   apiKey: string;
+  secretKey?: string;
   modelId: string;
 }
 
