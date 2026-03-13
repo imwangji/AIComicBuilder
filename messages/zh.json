@@ -90,7 +90,6 @@
     "selectProvider": "选择左侧供应商进行配置",
     "providerName": "供应商名称",
     "protocol": "协议",
-    "capabilities": "能力",
     "models": "模型列表",
     "fetchModels": "获取模型",
     "manualModelPlaceholder": "手动输入 model_id...",
@@ -103,6 +102,9 @@
     "defaultModels": "默认模型",
     "defaultTextModel": "文本模型",
     "defaultImageModel": "图像模型",
-    "defaultVideoModel": "视频模型"
+    "defaultVideoModel": "视频模型",
+    "languageModels": "语言模型",
+    "imageModels": "图片模型",
+    "videoModels": "视频模型"
   }
 }

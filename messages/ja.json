@@ -90,7 +90,6 @@
     "selectProvider": "左のプロバイダーを選択して設定",
     "providerName": "プロバイダー名",
     "protocol": "プロトコル",
-    "capabilities": "機能",
     "models": "モデル一覧",
     "fetchModels": "モデルを取得",
     "manualModelPlaceholder": "model_id を手動入力...",
@@ -103,6 +102,9 @@
     "defaultModels": "デフォルトモデル",
     "defaultTextModel": "テキストモデル",
     "defaultImageModel": "画像モデル",
-    "defaultVideoModel": "動画モデル"
+    "defaultVideoModel": "動画モデル",
+    "languageModels": "言語モデル",
+    "imageModels": "画像モデル",
+    "videoModels": "動画モデル"
   }
 }

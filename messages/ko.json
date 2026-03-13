@@ -90,7 +90,6 @@
     "selectProvider": "왼쪽에서 제공자를 선택하여 설정",
     "providerName": "제공자 이름",
     "protocol": "프로토콜",
-    "capabilities": "기능",
     "models": "모델 목록",
     "fetchModels": "모델 가져오기",
     "manualModelPlaceholder": "model_id를 수동 입력...",
@@ -103,6 +102,9 @@
     "defaultModels": "기본 모델",
     "defaultTextModel": "텍스트 모델",
     "defaultImageModel": "이미지 모델",
-    "defaultVideoModel": "동영상 모델"
+    "defaultVideoModel": "동영상 모델",
+    "languageModels": "언어 모델",
+    "imageModels": "이미지 모델",
+    "videoModels": "비디오 모델"
   }
 }

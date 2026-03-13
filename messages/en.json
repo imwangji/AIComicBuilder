@@ -90,7 +90,6 @@
     "selectProvider": "Select a provider to configure",
     "providerName": "Provider Name",
     "protocol": "Protocol",
-    "capabilities": "Capabilities",
     "models": "Models",
     "fetchModels": "Fetch Models",
     "manualModelPlaceholder": "Enter model_id manually...",
@@ -103,6 +102,9 @@
     "defaultModels": "Default Models",
     "defaultTextModel": "Text Model",
     "defaultImageModel": "Image Model",
-    "defaultVideoModel": "Video Model"
+    "defaultVideoModel": "Video Model",
+    "languageModels": "Language Models",
+    "imageModels": "Image Models",
+    "videoModels": "Video Models"
   }
 }
