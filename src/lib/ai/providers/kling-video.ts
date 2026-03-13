@@ -36,7 +36,13 @@ function toDataUrl(filePath: string): string {
         : ext === "webp"
           ? "image/webp"
           : "image/png";
-  const base64 = fs.readFileSync(filePath, { encoding: "base64" });
+  let data: Buffer;
+  try {
+    data = fs.readFileSync(filePath);
+  } catch {
+    throw new Error(`Kling: frame file not found: ${filePath}`);
+  }
+  const base64 = data.toString("base64");
   return `data:${mime};base64,${base64}`;
 }
 

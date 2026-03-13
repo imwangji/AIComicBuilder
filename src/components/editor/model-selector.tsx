@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useModelStore, type Capability, type ModelRef } from "@/stores/model-store";
 import { Type, ImageIcon, VideoIcon, ChevronDown, Check } from "lucide-react";
 
@@ -39,19 +39,29 @@ export function InlineModelPicker({ capability }: InlineModelPickerProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const options: { providerId: string; providerName: string; modelId: string; modelName: string }[] = [];
-  for (const p of providers) {
-    if (p.capability !== capability) continue;
-    for (const m of p.models) {
-      if (!m.checked) continue;
-      options.push({
-        providerId: p.id,
-        providerName: p.name,
-        modelId: m.id,
-        modelName: m.name,
-      });
+  const options = useMemo(() => {
+    const result: { providerId: string; providerName: string; modelId: string; modelName: string }[] = [];
+    for (const p of providers) {
+      if (p.capability !== capability) continue;
+      for (const m of p.models) {
+        if (!m.checked) continue;
+        result.push({
+          providerId: p.id,
+          providerName: p.name,
+          modelId: m.id,
+          modelName: m.name,
+        });
+      }
     }
-  }
+    return result;
+  }, [providers, capability]);
+
+  // Auto-select first option if nothing is selected
+  useEffect(() => {
+    if (!value && options.length > 0) {
+      setter({ providerId: options[0].providerId, modelId: options[0].modelId } as ModelRef);
+    }
+  }, [value, options, setter]);
 
   // Close on outside click
   useEffect(() => {
@@ -66,11 +76,6 @@ export function InlineModelPicker({ capability }: InlineModelPickerProps) {
   }, [open]);
 
   if (options.length === 0) return null;
-
-  // Auto-select first option if nothing is selected
-  if (!value && options.length > 0) {
-    setter({ providerId: options[0].providerId, modelId: options[0].modelId } as ModelRef);
-  }
 
   const currentKey = value
     ? `${value.providerId}:${value.modelId}`
