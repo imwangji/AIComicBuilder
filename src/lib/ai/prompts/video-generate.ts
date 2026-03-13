@@ -5,9 +5,7 @@ export function buildVideoPrompt(params: {
   duration?: number;
   characterDescriptions?: string;
 }): string {
-  const timePrefix = params.duration ? `0-${params.duration}s：` : "";
-  const charSection = params.characterDescriptions
-    ? `\n角色参考：${params.characterDescriptions}`
-    : "";
-  return `${timePrefix}${params.sceneDescription}，${params.motionScript}，镜头${params.cameraDirection}。${charSection}`;
+  // motionScript already contains time-segmented narrative — no top-level scene prefix needed.
+  // characterDescriptions omitted: first/last frames already carry visual character reference.
+  return `${params.motionScript}，镜头${params.cameraDirection}。`;
 }
