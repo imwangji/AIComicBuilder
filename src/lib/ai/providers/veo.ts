@@ -70,18 +70,19 @@ export class VeoProvider implements VideoProvider {
     operation = await this.pollForResult(operation);
 
     const response = operation.response;
+
+    if ((response?.raiMediaFilteredCount ?? 0) > 0) {
+      throw new Error(
+        `Veo generation blocked by safety filter: ${JSON.stringify(response?.raiMediaFilteredReasons)}`
+      );
+    }
+
     if (!response?.generatedVideos?.[0]) {
       throw new Error("No video returned from Veo");
     }
     const videoFile = response.generatedVideos[0].video;
     if (!videoFile) {
       throw new Error("No video URI returned from Veo");
-    }
-
-    if ((response.raiMediaFilteredCount ?? 0) > 0) {
-      throw new Error(
-        `Veo generation blocked by safety filter: ${JSON.stringify(response.raiMediaFilteredReasons)}`
-      );
     }
 
     const dir = path.join(this.uploadDir, "videos");
