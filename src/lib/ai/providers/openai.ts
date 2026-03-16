@@ -38,6 +38,17 @@ export class OpenAIProvider implements AIProvider {
   async generateImage(prompt: string, options?: ImageOptions): Promise<string> {
     const model = options?.model || this.defaultModel;
     const isDallE = model.startsWith("dall-e");
+
+    // Build extra params for non-DALL-E OpenAI-compatible providers (e.g. seedream, doubao).
+    // These APIs typically accept `size` as "WxH" and/or `aspect_ratio` as "W:H".
+    const compatParams: Record<string, unknown> = {};
+    if (!isDallE) {
+      if (options?.size) compatParams.size = options.size;
+      if (options?.aspectRatio) compatParams.aspect_ratio = options.aspectRatio;
+      // Fall back to 16:9 if neither is specified
+      if (!options?.size && !options?.aspectRatio) compatParams.aspect_ratio = "16:9";
+    }
+
     const response = await this.client.images.generate({
       model,
       prompt,
@@ -45,8 +56,9 @@ export class OpenAIProvider implements AIProvider {
         size: (options?.size as "1024x1024" | "1792x1024" | "1024x1792") || "1024x1024",
         quality: (options?.quality as "standard" | "hd") || "standard",
       }),
+      ...compatParams,
       n: 1,
-    });
+    } as Parameters<typeof this.client.images.generate>[0]);
 
     const imageUrl = response.data?.[0]?.url;
     if (!imageUrl) throw new Error("No image URL returned from OpenAI");

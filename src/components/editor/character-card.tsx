@@ -8,11 +8,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { useTranslations } from "next-intl";
 import { uploadUrl } from "@/lib/utils/upload-url";
 import { useModelStore } from "@/stores/model-store";
-import { Sparkles, Loader2 } from "lucide-react";
+import { Sparkles, Loader2, Copy, Check } from "lucide-react";
 import { InlineModelPicker } from "@/components/editor/model-selector";
 import { apiFetch } from "@/lib/api-fetch";
 import { useModelGuard } from "@/hooks/use-model-guard";
 import { toast } from "sonner";
+import { buildCharacterTurnaroundPrompt } from "@/lib/ai/prompts/character-image";
 
 interface CharacterCardProps {
   id: string;
@@ -39,6 +40,7 @@ export function CharacterCard({
   const [editDesc, setEditDesc] = useState(description);
   const [generating, setGenerating] = useState(false);
   const [lightbox, setLightbox] = useState(false);
+  const [copied, setCopied] = useState(false);
   const imageGuard = useModelGuard("image");
   const isGenerating = generating || (!!batchGenerating && !referenceImage);
 
@@ -78,16 +80,17 @@ export function CharacterCard({
       {/* Avatar area */}
       <div className="relative flex items-center justify-center bg-gradient-to-b from-[--surface] to-white p-8">
         {referenceImage ? (
-          <img
-            src={uploadUrl(referenceImage)}
-            alt={name}
-            className="h-36 w-full cursor-pointer rounded-xl object-cover"
-            onClick={() => setLightbox(true)}
-          />
+          <div className="w-full aspect-video overflow-hidden rounded-xl cursor-pointer" onClick={() => setLightbox(true)}>
+            <img
+              src={uploadUrl(referenceImage)}
+              alt={name}
+              className="w-full h-full object-cover"
+            />
+          </div>
         ) : isGenerating ? (
-          <div className="h-24 w-24 rounded-2xl animate-shimmer" />
+          <div className="w-full aspect-video rounded-xl animate-shimmer" />
         ) : (
-          <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-accent/10 text-3xl font-bold text-primary">
+          <div className="flex w-full aspect-video items-center justify-center rounded-xl bg-gradient-to-br from-primary/15 to-accent/10 text-3xl font-bold text-primary">
             {name.charAt(0).toUpperCase()}
           </div>
         )}
@@ -110,19 +113,39 @@ export function CharacterCard({
         />
         <div className="space-y-2">
             <InlineModelPicker capability="image" />
-            <Button
-              onClick={handleGenerateImage}
-              disabled={isGenerating}
-              className="w-full"
-              size="sm"
-            >
-              {isGenerating ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Sparkles className="h-3.5 w-3.5" />
-              )}
-              {isGenerating ? t("common.generating") : t("character.generateImage")}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleGenerateImage}
+                disabled={isGenerating}
+                className="flex-1"
+                size="sm"
+              >
+                {isGenerating ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5" />
+                )}
+                {isGenerating ? t("common.generating") : t("character.generateImage")}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 px-2.5"
+                title="Copy image prompt"
+                onClick={async () => {
+                  const prompt = buildCharacterTurnaroundPrompt(editDesc || editName, editName);
+                  await navigator.clipboard.writeText(prompt);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+              >
+                {copied ? (
+                  <Check className="h-3.5 w-3.5 text-green-500" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </div>
           </div>
       </div>
 

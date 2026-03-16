@@ -120,7 +120,7 @@ export function InlineModelPicker({ capability }: InlineModelPickerProps) {
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 min-w-[200px] overflow-hidden rounded-xl border border-[--border-subtle] bg-white py-1 shadow-lg">
+        <div className="absolute left-0 bottom-full z-50 mb-1 min-w-[200px] overflow-hidden rounded-xl border border-[--border-subtle] bg-white py-1 shadow-lg">
           {options.map((opt) => {
             const key = `${opt.providerId}:${opt.modelId}`;
             const selected = key === currentKey;

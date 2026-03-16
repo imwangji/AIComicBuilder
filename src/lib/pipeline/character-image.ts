@@ -19,10 +19,11 @@ export async function handleCharacterImage(task: Task) {
   }
 
   const ai = resolveImageProvider(payload.modelConfig);
-  const prompt = buildCharacterTurnaroundPrompt(character.description || character.name);
+  const prompt = buildCharacterTurnaroundPrompt(character.description || character.name, character.name);
 
   const imagePath = await ai.generateImage(prompt, {
-    size: "1792x1024", // wide format for turnaround sheet
+    size: "2560x1440",
+    aspectRatio: "16:9",
     quality: "hd",
   });
 

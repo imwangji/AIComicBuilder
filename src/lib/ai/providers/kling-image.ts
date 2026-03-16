@@ -64,7 +64,7 @@ export class KlingImageProvider implements AIProvider {
     throw new Error("Kling does not support text generation");
   }
 
-  async generateImage(prompt: string, _options?: ImageOptions): Promise<string> {
+  async generateImage(prompt: string, options?: ImageOptions): Promise<string> {
     // Submit task
     const submitRes = await fetch(`${this.baseUrl}/v1/images/generations`, {
       method: "POST",
@@ -76,7 +76,7 @@ export class KlingImageProvider implements AIProvider {
         model: this.model,
         prompt,
         n: 1,
-        aspect_ratio: "16:9",
+        aspect_ratio: options?.aspectRatio || "16:9",
       }),
     });
 
