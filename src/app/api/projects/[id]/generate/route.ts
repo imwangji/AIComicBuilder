@@ -120,6 +120,14 @@ export async function POST(
     return handleBatchVideoGenerate(projectId, payload, modelConfig);
   }
 
+  if (action === "single_reference_video") {
+    return handleSingleReferenceVideo(projectId, payload, modelConfig);
+  }
+
+  if (action === "batch_reference_video") {
+    return handleBatchReferenceVideo(projectId, payload, modelConfig);
+  }
+
   if (action === "video_assemble") {
     return handleVideoAssembleSync(projectId);
   }
@@ -320,11 +328,12 @@ async function handleSingleCharacterImage(
   }
 
   const ai = resolveImageProvider(modelConfig);
-  const prompt = buildCharacterTurnaroundPrompt(character.description || character.name);
+  const prompt = buildCharacterTurnaroundPrompt(character.description || character.name, character.name);
 
   try {
     const imagePath = await ai.generateImage(prompt, {
-      size: "1792x1024",
+      size: "2560x1440",
+      aspectRatio: "16:9",
       quality: "hd",
     });
     await db
@@ -366,9 +375,10 @@ async function handleBatchCharacterImage(
   const results = await Promise.all(
     needImages.map(async (character) => {
       try {
-        const prompt = buildCharacterTurnaroundPrompt(character.description || character.name);
+        const prompt = buildCharacterTurnaroundPrompt(character.description || character.name, character.name);
         const imagePath = await ai.generateImage(prompt, {
-          size: "1792x1024",
+          size: "2560x1440",
+          aspectRatio: "16:9",
           quality: "hd",
         });
         await db
@@ -950,6 +960,209 @@ async function handleBatchVideoGenerate(
       console.error(`[BatchVideoGenerate] Error for shot ${shot.sequence}:`, err);
       await db.update(shots).set({ status: "failed" }).where(eq(shots.id, shot.id));
       results.push({ shotId: shot.id, sequence: shot.sequence, status: "error", error: extractErrorMessage(err) });
+    }
+  }
+
+  return NextResponse.json({ results });
+}
+
+// --- single_reference_video: text2video with character reference images ---
+
+async function handleSingleReferenceVideo(
+  projectId: string,
+  payload?: Record<string, unknown>,
+  modelConfig?: ModelConfig
+) {
+  const shotId = payload?.shotId as string | undefined;
+  if (!shotId) {
+    return NextResponse.json({ error: "No shotId provided" }, { status: 400 });
+  }
+  if (!modelConfig?.video) {
+    return NextResponse.json({ error: "No video model configured" }, { status: 400 });
+  }
+
+  const [shot] = await db.select().from(shots).where(eq(shots.id, shotId));
+  if (!shot) {
+    return NextResponse.json({ error: "Shot not found" }, { status: 404 });
+  }
+
+  const projectCharacters = await db
+    .select()
+    .from(characters)
+    .where(eq(characters.projectId, shot.projectId));
+
+  const charRefImages = projectCharacters
+    .filter((c) => !!c.referenceImage)
+    .map((c) => c.referenceImage as string);
+
+  if (charRefImages.length === 0) {
+    return NextResponse.json(
+      { error: "No character reference images available. Please generate character reference images first." },
+      { status: 400 }
+    );
+  }
+
+  const videoProvider = resolveVideoProvider(modelConfig);
+  const ratio = (payload?.ratio as string) || "16:9";
+
+  const characterDescriptions = projectCharacters
+    .map((c) => `${c.name}: ${c.description}`)
+    .join("\n");
+
+  const shotDialogues = await db
+    .select({ text: dialogues.text, characterId: dialogues.characterId, sequence: dialogues.sequence })
+    .from(dialogues)
+    .where(eq(dialogues.shotId, shotId))
+    .orderBy(asc(dialogues.sequence));
+  const dialogueList = shotDialogues.map((d) => ({
+    characterName: projectCharacters.find((c) => c.id === d.characterId)?.name ?? "Unknown",
+    text: d.text,
+  }));
+
+  const videoPrompt = shot.motionScript
+    ? buildVideoPrompt({
+        sceneDescription: shot.prompt || "",
+        motionScript: shot.motionScript,
+        cameraDirection: shot.cameraDirection || "static",
+        duration: shot.duration ?? 10,
+        characterDescriptions,
+        dialogues: dialogueList.length > 0 ? dialogueList : undefined,
+      })
+    : shot.prompt || "";
+
+  try {
+    await db.update(shots).set({ status: "generating" }).where(eq(shots.id, shotId));
+
+    const videoPath = await videoProvider.generateVideo({
+      charRefImages,
+      prompt: videoPrompt,
+      duration: shot.duration ?? 10,
+      ratio,
+    });
+
+    await db
+      .update(shots)
+      .set({ videoUrl: videoPath, status: "completed" })
+      .where(eq(shots.id, shotId));
+
+    return NextResponse.json({ shotId, videoUrl: videoPath, status: "ok" });
+  } catch (err) {
+    console.error(`[SingleReferenceVideo] Error for shot ${shotId}:`, err);
+    await db.update(shots).set({ status: "failed" }).where(eq(shots.id, shotId));
+    return NextResponse.json(
+      { shotId, status: "error", error: extractErrorMessage(err) },
+      { status: 500 }
+    );
+  }
+}
+
+// --- batch_reference_video: sequential text2video for all eligible shots ---
+
+async function handleBatchReferenceVideo(
+  projectId: string,
+  payload?: Record<string, unknown>,
+  modelConfig?: ModelConfig
+) {
+  if (!modelConfig?.video) {
+    return NextResponse.json({ error: "No video model configured" }, { status: 400 });
+  }
+
+  const allShots = await db
+    .select()
+    .from(shots)
+    .where(eq(shots.projectId, projectId))
+    .orderBy(asc(shots.sequence));
+
+  const eligible = allShots.filter(
+    (s) => s.status !== "generating" && !s.videoUrl
+  );
+  if (eligible.length === 0) {
+    return NextResponse.json({ results: [], message: "No eligible shots" });
+  }
+
+  const projectCharacters = await db
+    .select()
+    .from(characters)
+    .where(eq(characters.projectId, projectId));
+
+  const charRefImages = projectCharacters
+    .filter((c) => !!c.referenceImage)
+    .map((c) => c.referenceImage as string);
+
+  if (charRefImages.length === 0) {
+    return NextResponse.json(
+      { error: "No character reference images available." },
+      { status: 400 }
+    );
+  }
+
+  const videoProvider = resolveVideoProvider(modelConfig);
+  const ratio = (payload?.ratio as string) || "16:9";
+
+  await Promise.all(
+    eligible.map((shot) =>
+      db.update(shots).set({ status: "generating" }).where(eq(shots.id, shot.id))
+    )
+  );
+
+  const characterDescriptions = projectCharacters
+    .map((c) => `${c.name}: ${c.description}`)
+    .join("\n");
+
+  const results: Array<{
+    shotId: string;
+    sequence: number;
+    status: "ok" | "error";
+    videoUrl?: string;
+    error?: string;
+  }> = [];
+
+  for (const shot of eligible) {
+    try {
+      const shotDialogues = await db
+        .select({ text: dialogues.text, characterId: dialogues.characterId, sequence: dialogues.sequence })
+        .from(dialogues)
+        .where(eq(dialogues.shotId, shot.id))
+        .orderBy(asc(dialogues.sequence));
+      const dialogueList = shotDialogues.map((d) => ({
+        characterName: projectCharacters.find((c) => c.id === d.characterId)?.name ?? "Unknown",
+        text: d.text,
+      }));
+
+      const videoPrompt = shot.motionScript
+        ? buildVideoPrompt({
+            sceneDescription: shot.prompt || "",
+            motionScript: shot.motionScript,
+            cameraDirection: shot.cameraDirection || "static",
+            duration: shot.duration ?? 10,
+            characterDescriptions,
+            dialogues: dialogueList.length > 0 ? dialogueList : undefined,
+          })
+        : shot.prompt || "";
+
+      const videoPath = await videoProvider.generateVideo({
+        charRefImages,
+        prompt: videoPrompt,
+        duration: shot.duration ?? 10,
+        ratio,
+      });
+
+      await db
+        .update(shots)
+        .set({ videoUrl: videoPath, status: "completed" })
+        .where(eq(shots.id, shot.id));
+
+      console.log(`[BatchReferenceVideo] Shot ${shot.sequence} completed`);
+      results.push({ shotId: shot.id, sequence: shot.sequence, status: "ok", videoUrl: videoPath });
+    } catch (err) {
+      console.error(`[BatchReferenceVideo] Error for shot ${shot.sequence}:`, err);
+      await db.update(shots).set({ status: "failed" }).where(eq(shots.id, shot.id));
+      results.push({
+        shotId: shot.id,
+        sequence: shot.sequence,
+        status: "error",
+        error: extractErrorMessage(err),
+      });
     }
   }
 
