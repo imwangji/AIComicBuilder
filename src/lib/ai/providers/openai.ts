@@ -49,7 +49,7 @@ export class OpenAIProvider implements AIProvider {
       if (!options?.size && !options?.aspectRatio) compatParams.aspect_ratio = "16:9";
     }
 
-    const response = await this.client.images.generate({
+    const response = await ((this.client.images.generate as unknown) as (params: Record<string, unknown>) => Promise<OpenAI.ImagesResponse>)({
       model,
       prompt,
       ...(isDallE && {
@@ -58,7 +58,7 @@ export class OpenAIProvider implements AIProvider {
       }),
       ...compatParams,
       n: 1,
-    } as Parameters<typeof this.client.images.generate>[0]);
+    });
 
     const imageUrl = response.data?.[0]?.url;
     if (!imageUrl) throw new Error("No image URL returned from OpenAI");
