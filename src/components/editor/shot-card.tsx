@@ -52,6 +52,8 @@ interface ShotCardProps {
   batchGeneratingFrames?: boolean;
   batchGeneratingVideo?: boolean;
   characterDescriptions?: string;
+  generationMode?: "keyframe" | "reference";
+  batchGeneratingReferenceVideo?: boolean;
 }
 
 const statusVariant: Record<string, "outline" | "success" | "warning" | "destructive"> = {
@@ -80,6 +82,8 @@ export function ShotCard({
   batchGeneratingFrames,
   batchGeneratingVideo,
   characterDescriptions,
+  generationMode = "keyframe",
+  batchGeneratingReferenceVideo,
 }: ShotCardProps) {
   const t = useTranslations();
   const getModelConfig = useModelStore((s) => s.getModelConfig);
@@ -99,7 +103,10 @@ export function ShotCard({
   const imageGuard = useModelGuard("image");
   const videoGuard = useModelGuard("video");
   const isGeneratingFrames = generatingFrames || (!!batchGeneratingFrames && !firstFrame && !lastFrame);
-  const isGeneratingVideo = generatingVideo || (!!batchGeneratingVideo && !!firstFrame && !!lastFrame && !videoUrl);
+  const isGeneratingVideo =
+    generatingVideo ||
+    (!!batchGeneratingVideo && !!firstFrame && !!lastFrame && !videoUrl) ||
+    (!!batchGeneratingReferenceVideo && generationMode === "reference" && !videoUrl);
   const variant = statusVariant[status] || "outline";
 
   async function patchShot(fields: Record<string, unknown>) {
@@ -157,6 +164,27 @@ export function ShotCard({
     setGeneratingVideo(false);
   }
 
+  async function handleGenerateReferenceVideo() {
+    if (!videoGuard()) return;
+    setGeneratingVideo(true);
+    try {
+      await apiFetch(`/api/projects/${projectId}/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "single_reference_video",
+          payload: { shotId: id, ratio: videoRatio },
+          modelConfig: getModelConfig(),
+        }),
+      });
+      onUpdate();
+    } catch (err) {
+      console.error("Reference video generate error:", err);
+      toast.error(err instanceof Error ? err.message : t("common.generationFailed"));
+    }
+    setGeneratingVideo(false);
+  }
+
   async function handleRewriteText() {
     setRewritingText(true);
     try {
@@ -206,11 +234,14 @@ export function ShotCard({
 
         {/* Media thumbnails */}
         <div className="flex gap-1.5">
-          {[
-            { src: firstFrame, icon: ImageIcon, label: t("shot.firstFrame"), type: "image" as const },
-            { src: lastFrame, icon: ImageIcon, label: t("shot.lastFrame"), type: "image" as const },
-            { src: videoUrl, icon: VideoIcon, label: "Video", type: "video" as const },
-          ].map((item, i) => (
+          {(generationMode === "reference"
+            ? [{ src: videoUrl, icon: VideoIcon, label: "Video", type: "video" as const }]
+            : [
+                { src: firstFrame, icon: ImageIcon, label: t("shot.firstFrame"), type: "image" as const },
+                { src: lastFrame, icon: ImageIcon, label: t("shot.lastFrame"), type: "image" as const },
+                { src: videoUrl, icon: VideoIcon, label: "Video", type: "video" as const },
+              ]
+          ).map((item, i) => (
             <div
               key={i}
               className={`h-14 w-20 flex-shrink-0 overflow-hidden rounded-lg border border-[--border-subtle] ${item.src ? "cursor-pointer transition-opacity hover:opacity-80" : ""}`}
@@ -264,20 +295,35 @@ export function ShotCard({
         <div className="flex items-center gap-2">
           {!expanded && (
             <>
-              <Button
-                size="xs"
-                variant="outline"
-                onClick={(e) => { e.stopPropagation(); handleGenerateFrames(); }}
-                disabled={isGeneratingFrames || isGeneratingVideo}
-              >
-                {isGeneratingFrames ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <ImageIcon className="h-3 w-3" />
-                )}
-                {isGeneratingFrames ? t("common.generating") : t("project.generateFrames")}
-              </Button>
-              {firstFrame && lastFrame && (
+              {generationMode !== "reference" && (
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={(e) => { e.stopPropagation(); handleGenerateFrames(); }}
+                  disabled={isGeneratingFrames || isGeneratingVideo}
+                >
+                  {isGeneratingFrames ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <ImageIcon className="h-3 w-3" />
+                  )}
+                  {isGeneratingFrames ? t("common.generating") : t("project.generateFrames")}
+                </Button>
+              )}
+              {generationMode === "reference" ? (
+                <Button
+                  size="xs"
+                  onClick={(e) => { e.stopPropagation(); handleGenerateReferenceVideo(); }}
+                  disabled={isGeneratingVideo}
+                >
+                  {isGeneratingVideo ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3 w-3" />
+                  )}
+                  {isGeneratingVideo ? t("common.generating") : t("project.generateVideo")}
+                </Button>
+              ) : (firstFrame && lastFrame && (
                 <Button
                   size="xs"
                   onClick={(e) => { e.stopPropagation(); handleGenerateVideo(); }}
@@ -290,7 +336,7 @@ export function ShotCard({
                   )}
                   {isGeneratingVideo ? t("common.generating") : t("project.generateVideo")}
                 </Button>
-              )}
+              ))}
             </>
           )}
           <button
