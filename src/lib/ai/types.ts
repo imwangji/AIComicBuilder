@@ -30,8 +30,6 @@ type ReferenceVideoParams = {
   firstFrame?: never;
   lastFrame?: never;
   initialImage: string;
-  /** Toonflow-style: additional character reference images injected alongside initialImage */
-  characterRefs?: Array<{ name: string; imagePath: string }>;
 };
 
 export type VideoGenerateParams = (KeyframeVideoParams | ReferenceVideoParams) & {

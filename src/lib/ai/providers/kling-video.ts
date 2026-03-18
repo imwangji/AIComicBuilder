@@ -129,25 +129,11 @@ export class KlingVideoProvider implements VideoProvider {
       console.log(`[Kling Video] image2video task submitted: ${taskId}`);
 
     } else {
-      // ── Reference image mode: text2video with initial image + character refs ──
-
-      // Re-type params inside else branch: TypeScript's discriminated union narrowing via
-      // "firstFrame" in params does not always narrow to ReferenceVideoParams statically.
-      const refParams = params as VideoGenerateParams & {
-        initialImage: string;
-        characterRefs?: Array<{ name: string; imagePath: string }>;
-      };
-
-      // Use async helper to handle both local paths and HTTP URLs
-      // Fetch all images in parallel for better performance
-      const allImagePaths = [
-        refParams.initialImage,
-        ...(refParams.characterRefs?.map((r) => r.imagePath) ?? []),
-      ];
-      const refImages = await Promise.all(allImagePaths.map(toBase64FromPathOrUrl));
+      // ── Reference image mode: text2video with initial image ──
+      const refImage = await toBase64FromPathOrUrl(params.initialImage!);
 
       console.log(
-        `[Kling Video] text2video: model=${this.model}, duration=${duration}s, ratio=${aspectRatio}, refs=${refImages.length}`
+        `[Kling Video] text2video: model=${this.model}, duration=${duration}s, ratio=${aspectRatio}`
       );
 
       let submitRes = await fetch(`${this.baseUrl}/v1/videos/text2video`, {
@@ -159,7 +145,7 @@ export class KlingVideoProvider implements VideoProvider {
         body: JSON.stringify({
           model: this.model,
           prompt: params.prompt,
-          reference_image: refImages,
+          reference_image: [refImage],
           duration,
           aspect_ratio: aspectRatio,
         }),
@@ -168,9 +154,7 @@ export class KlingVideoProvider implements VideoProvider {
       // Fallback: if reference_image is unsupported (400/422), retry without it
       if (submitRes.status === 400 || submitRes.status === 422) {
         const fallbackBody = await submitRes.text().catch(() => "");
-        console.warn(
-          `[Kling Video] text2video reference_image rejected (${submitRes.status}: ${fallbackBody}), retrying without ref images`
-        );
+        console.warn(`[Kling Video] text2video reference_image rejected (${submitRes.status}: ${fallbackBody}), retrying without ref images`);
         submitRes = await fetch(`${this.baseUrl}/v1/videos/text2video`, {
           method: "POST",
           headers: {
