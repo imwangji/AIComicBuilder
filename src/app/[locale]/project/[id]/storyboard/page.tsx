@@ -93,6 +93,8 @@ export default function StoryboardPage() {
   const [generatingVideos, setGeneratingVideos] = useState(false);
   const [generatingSceneFrames, setGeneratingSceneFrames] = useState(false);
   const [sceneFramesOverwrite, setSceneFramesOverwrite] = useState(false);
+  const [generatingFramesOverwrite, setGeneratingFramesOverwrite] = useState(false);
+  const [generatingVideosOverwrite, setGeneratingVideosOverwrite] = useState(false);
   const [videoRatio, setVideoRatio] = useState("16:9");
   const textGuard = useModelGuard("text");
   const imageGuard = useModelGuard("image");
@@ -177,9 +179,10 @@ export default function StoryboardPage() {
     await fetchProject(project.id);
   }
 
-  async function handleBatchGenerateFrames() {
+  async function handleBatchGenerateFrames(overwrite = false) {
     if (!project) return;
     if (!imageGuard()) return;
+    setGeneratingFramesOverwrite(overwrite);
     setGeneratingFrames(true);
 
     try {
@@ -188,6 +191,7 @@ export default function StoryboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "batch_frame_generate",
+          payload: { overwrite },
           modelConfig: getModelConfig(),
         }),
       });
@@ -200,13 +204,15 @@ export default function StoryboardPage() {
       toast.error(err instanceof Error ? err.message : t("common.generationFailed"));
     }
 
+    setGeneratingFramesOverwrite(false);
     setGeneratingFrames(false);
     fetchProject(project.id);
   }
 
-  async function handleBatchGenerateVideos() {
+  async function handleBatchGenerateVideos(overwrite = false) {
     if (!project) return;
     if (!videoGuard()) return;
+    setGeneratingVideosOverwrite(overwrite);
     setGeneratingVideos(true);
 
     try {
@@ -215,7 +221,7 @@ export default function StoryboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "batch_video_generate",
-          payload: { ratio: videoRatio },
+          payload: { ratio: videoRatio, overwrite },
           modelConfig: getModelConfig(),
         }),
       });
@@ -228,6 +234,7 @@ export default function StoryboardPage() {
       toast.error(err instanceof Error ? err.message : t("common.generationFailed"));
     }
 
+    setGeneratingVideosOverwrite(false);
     setGeneratingVideos(false);
     fetchProject(project.id);
   }
@@ -257,14 +264,15 @@ export default function StoryboardPage() {
       toast.error(err instanceof Error ? err.message : t("common.generationFailed"));
     }
 
-    setGeneratingSceneFrames(false);
     setSceneFramesOverwrite(false);
+    setGeneratingSceneFrames(false);
     fetchProject(project.id);
   }
 
-  async function handleBatchGenerateReferenceVideos() {
+  async function handleBatchGenerateReferenceVideos(overwrite = false) {
     if (!project) return;
     if (!videoGuard()) return;
+    setGeneratingVideosOverwrite(overwrite);
     setGeneratingVideos(true);
 
     try {
@@ -273,7 +281,7 @@ export default function StoryboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "batch_reference_video",
-          payload: { ratio: videoRatio },
+          payload: { ratio: videoRatio, overwrite },
           modelConfig: getModelConfig(),
         }),
       });
@@ -286,6 +294,7 @@ export default function StoryboardPage() {
       toast.error(err instanceof Error ? err.message : t("common.generationFailed"));
     }
 
+    setGeneratingVideosOverwrite(false);
     setGeneratingVideos(false);
     fetchProject(project.id);
   }
@@ -431,19 +440,34 @@ export default function StoryboardPage() {
             <>
               <InlineModelPicker capability="image" />
               <Button
-                onClick={handleBatchGenerateFrames}
+                onClick={() => handleBatchGenerateFrames(false)}
                 disabled={anyGenerating}
                 variant={step2Status === "completed" ? "outline" : "default"}
                 size="sm"
               >
-                {generatingFrames ? (
+                {generatingFrames && !generatingFramesOverwrite ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
                   <ImageIcon className="h-3.5 w-3.5" />
                 )}
-                {generatingFrames
+                {generatingFrames && !generatingFramesOverwrite
                   ? t("common.generating")
                   : t("project.batchGenerateFrames")}
+              </Button>
+              <Button
+                onClick={() => handleBatchGenerateFrames(true)}
+                disabled={anyGenerating}
+                variant="outline"
+                size="sm"
+              >
+                {generatingFrames && generatingFramesOverwrite ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ImageIcon className="h-3.5 w-3.5" />
+                )}
+                {generatingFrames && generatingFramesOverwrite
+                  ? t("common.generating")
+                  : t("project.batchGenerateFramesOverwrite")}
               </Button>
             </>
           )}
@@ -458,12 +482,12 @@ export default function StoryboardPage() {
                 variant="outline"
                 size="sm"
               >
-                {generatingSceneFrames ? (
+                {generatingSceneFrames && !sceneFramesOverwrite ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
                   <ImageIcon className="h-3.5 w-3.5" />
                 )}
-                {generatingSceneFrames
+                {generatingSceneFrames && !sceneFramesOverwrite
                   ? t("common.generating")
                   : t("project.batchGenerateSceneFrames")}
               </Button>
@@ -473,12 +497,12 @@ export default function StoryboardPage() {
                 variant="outline"
                 size="sm"
               >
-                {generatingSceneFrames ? (
+                {generatingSceneFrames && sceneFramesOverwrite ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
                   <ImageIcon className="h-3.5 w-3.5" />
                 )}
-                {generatingSceneFrames
+                {generatingSceneFrames && sceneFramesOverwrite
                   ? t("common.generating")
                   : t("project.batchGenerateSceneFramesOverwrite")}
               </Button>
@@ -492,25 +516,44 @@ export default function StoryboardPage() {
               <InlineModelPicker capability="video" />
               <VideoRatioPicker value={videoRatio} onChange={setVideoRatio} />
               <Button
-                onClick={
+                onClick={() =>
                   generationMode === "reference"
-                    ? handleBatchGenerateReferenceVideos
-                    : handleBatchGenerateVideos
+                    ? handleBatchGenerateReferenceVideos(false)
+                    : handleBatchGenerateVideos(false)
                 }
                 disabled={anyGenerating || (generationMode === "reference" && !hasReferenceImages)}
                 variant={step3Status === "completed" ? "outline" : "default"}
                 size="sm"
               >
-                {generatingVideos ? (
+                {generatingVideos && !generatingVideosOverwrite ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
                   <Sparkles className="h-3.5 w-3.5" />
                 )}
-                {generatingVideos
+                {generatingVideos && !generatingVideosOverwrite
                   ? t("common.generating")
                   : generationMode === "reference"
                     ? t("project.batchGenerateReferenceVideos")
                     : t("project.batchGenerateVideos")}
+              </Button>
+              <Button
+                onClick={() =>
+                  generationMode === "reference"
+                    ? handleBatchGenerateReferenceVideos(true)
+                    : handleBatchGenerateVideos(true)
+                }
+                disabled={anyGenerating || (generationMode === "reference" && !hasReferenceImages)}
+                variant="outline"
+                size="sm"
+              >
+                {generatingVideos && generatingVideosOverwrite ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5" />
+                )}
+                {generatingVideos && generatingVideosOverwrite
+                  ? t("common.generating")
+                  : t("project.batchGenerateVideosOverwrite")}
               </Button>
             </>
           )}
@@ -566,7 +609,7 @@ export default function StoryboardPage() {
               generationMode={generationMode}
               batchGeneratingReferenceVideo={generationMode === "reference" ? generatingVideos : undefined}
               batchGeneratingSceneFrames={generationMode === "reference" ? generatingSceneFrames : undefined}
-              batchSceneFramesOverwrite={sceneFramesOverwrite}
+              batchSceneFramesOverwrite={generationMode === "reference" ? sceneFramesOverwrite : undefined}
             />
           ))}
         </div>
