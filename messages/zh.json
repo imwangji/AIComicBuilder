@@ -115,7 +115,7 @@
     "stepFrames": "首尾帧",
     "stepSceneFrame": "场景参考帧",
     "stepVideoPrompt": "视频提示词",
-    "stepVideo": "生成视频",
+    "stepVideo": "视频",
     "editDetails": "编辑详情",
     "regenerateFrames": "重新生成帧",
     "regeneratePrompt": "重新生成提示词",
