@@ -84,8 +84,15 @@ export class KlingVideoProvider implements VideoProvider {
     return `Bearer ${this.apiKey}`;
   }
 
+  private mapDuration(duration: number): number {
+    if (this.model === "kling-v3") {
+      return Math.max(3, Math.min(15, duration));
+    }
+    return duration <= 5 ? 5 : 10;
+  }
+
   async generateVideo(params: VideoGenerateParams): Promise<VideoGenerateResult> {
-    const duration = params.duration <= 5 ? 5 : 10;
+    const duration = this.mapDuration(params.duration);
     const aspectRatio = params.ratio;
 
     let taskId: string;
