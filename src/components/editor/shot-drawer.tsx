@@ -131,6 +131,7 @@ export function ShotDrawer({
   const hasFramePair = !!(shot.firstFrame && shot.lastFrame);
   const hasVideoPrompt = !!shot.videoPrompt;
   const hasVideo = !!shot.videoUrl;
+  const localGenerating = generatingFrames || generatingSceneFrame || generatingVideo || generatingPrompt || rewritingText;
 
   async function patchShot(fields: Record<string, unknown>) {
     await apiFetch(`/api/projects/${projectId}/shots/${shot!.id}`, {
@@ -264,14 +265,14 @@ export function ShotDrawer({
           <div className="flex items-center gap-1">
             <button
               onClick={() => hasPrev && onShotChange(shots[currentIndex - 1].id)}
-              disabled={!hasPrev}
+              disabled={!hasPrev || localGenerating}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-[--text-muted] transition-colors hover:bg-[--surface] hover:text-[--text-primary] disabled:opacity-30"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
             <button
               onClick={() => hasNext && onShotChange(shots[currentIndex + 1].id)}
-              disabled={!hasNext}
+              disabled={!hasNext || localGenerating}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-[--text-muted] transition-colors hover:bg-[--surface] hover:text-[--text-primary] disabled:opacity-30"
             >
               <ChevronRight className="h-4 w-4" />

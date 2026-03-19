@@ -25,7 +25,6 @@ import {
   Circle,
   XCircle,
   FileText,
-  Clapperboard,
 } from "lucide-react";
 
 interface Dialogue {
