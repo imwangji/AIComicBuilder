@@ -129,6 +129,7 @@ export default function EpisodeStoryboardPage() {
         body: JSON.stringify({
           action: "shot_split",
           modelConfig: getModelConfig(),
+          episodeId: useProjectStore.getState().currentEpisodeId,
         }),
       });
 
@@ -163,6 +164,7 @@ export default function EpisodeStoryboardPage() {
           action: "batch_frame_generate",
           payload: { ratio: videoRatio, overwrite, versionId: selectedVersionId },
           modelConfig: getModelConfig(),
+          episodeId: useProjectStore.getState().currentEpisodeId,
         }),
       });
       const data = await response.json() as { results: Array<{ status: string }> };
@@ -193,6 +195,7 @@ export default function EpisodeStoryboardPage() {
           action: "batch_video_generate",
           payload: { ratio: videoRatio, overwrite, versionId: selectedVersionId },
           modelConfig: getModelConfig(),
+          episodeId: useProjectStore.getState().currentEpisodeId,
         }),
       });
       const data = await response.json() as { results: Array<{ status: string }> };
@@ -223,6 +226,7 @@ export default function EpisodeStoryboardPage() {
           action: "batch_scene_frame",
           payload: { overwrite, versionId: selectedVersionId },
           modelConfig: getModelConfig(),
+          episodeId: useProjectStore.getState().currentEpisodeId,
         }),
       });
       const data = await response.json() as { results: Array<{ status: string }> };
@@ -251,6 +255,7 @@ export default function EpisodeStoryboardPage() {
           action: "batch_video_prompt",
           payload: { versionId: selectedVersionId },
           modelConfig: getModelConfig(),
+          episodeId: useProjectStore.getState().currentEpisodeId,
         }),
       });
       const data = await response.json() as { results: Array<{ status: string }> };
@@ -280,6 +285,7 @@ export default function EpisodeStoryboardPage() {
           action: "batch_reference_video",
           payload: { ratio: videoRatio, overwrite, versionId: selectedVersionId },
           modelConfig: getModelConfig(),
+          episodeId: useProjectStore.getState().currentEpisodeId,
         }),
       });
       const data = await response.json() as { results: Array<{ status: string }> };

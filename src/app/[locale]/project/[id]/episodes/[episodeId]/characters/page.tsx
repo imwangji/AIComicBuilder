@@ -39,6 +39,7 @@ export default function EpisodeCharactersPage() {
         body: JSON.stringify({
           action: "character_extract",
           modelConfig: getModelConfig(),
+          episodeId: useProjectStore.getState().currentEpisodeId,
         }),
       });
 
@@ -70,6 +71,7 @@ export default function EpisodeCharactersPage() {
         body: JSON.stringify({
           action: "batch_character_image",
           modelConfig: getModelConfig(),
+          episodeId: useProjectStore.getState().currentEpisodeId,
         }),
       });
 

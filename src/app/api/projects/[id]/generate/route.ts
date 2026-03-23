@@ -3,8 +3,8 @@ import { streamText } from "ai";
 import { createLanguageModel, extractJSON } from "@/lib/ai/ai-sdk";
 import type { ProviderConfig } from "@/lib/ai/ai-sdk";
 import { db } from "@/lib/db";
-import { projects, characters, shots, dialogues, storyboardVersions } from "@/lib/db/schema";
-import { eq, asc, and, lt, gt, desc } from "drizzle-orm";
+import { projects, episodes, characters, shots, dialogues, storyboardVersions } from "@/lib/db/schema";
+import { eq, asc, and, lt, gt, desc, or, isNull } from "drizzle-orm";
 import { getUserIdFromRequest } from "@/lib/get-user-id";
 import path from "path";
 import { ulid } from "ulid";
@@ -110,20 +110,21 @@ export async function POST(
     action: string;
     payload?: Record<string, unknown>;
     modelConfig?: ModelConfig;
+    episodeId?: string;
   };
 
-  const { action, payload, modelConfig } = body;
+  const { action, payload, modelConfig, episodeId } = body;
 
   if (action === "script_generate") {
-    return handleScriptGenerate(projectId, payload, modelConfig);
+    return handleScriptGenerate(projectId, payload, modelConfig, episodeId);
   }
 
   if (action === "script_parse") {
-    return handleScriptParseStream(projectId, modelConfig);
+    return handleScriptParseStream(projectId, modelConfig, episodeId);
   }
 
   if (action === "character_extract") {
-    return handleCharacterExtract(projectId, modelConfig);
+    return handleCharacterExtract(projectId, modelConfig, episodeId);
   }
 
   if (action === "single_character_image") {
@@ -131,23 +132,23 @@ export async function POST(
   }
 
   if (action === "batch_character_image") {
-    return handleBatchCharacterImage(projectId, modelConfig);
+    return handleBatchCharacterImage(projectId, modelConfig, episodeId);
   }
 
   if (action === "shot_split") {
-    return handleShotSplitStream(projectId, modelConfig);
+    return handleShotSplitStream(projectId, modelConfig, episodeId);
   }
 
   if (action === "single_shot_rewrite") {
-    return handleSingleShotRewrite(projectId, payload, modelConfig);
+    return handleSingleShotRewrite(projectId, payload, modelConfig, episodeId);
   }
 
   if (action === "batch_frame_generate") {
-    return handleBatchFrameGenerate(projectId, payload, modelConfig);
+    return handleBatchFrameGenerate(projectId, payload, modelConfig, episodeId);
   }
 
   if (action === "single_frame_generate") {
-    return handleSingleFrameGenerate(projectId, payload, modelConfig);
+    return handleSingleFrameGenerate(projectId, payload, modelConfig, episodeId);
   }
 
   if (action === "single_video_generate") {
@@ -155,7 +156,7 @@ export async function POST(
   }
 
   if (action === "batch_video_generate") {
-    return handleBatchVideoGenerate(projectId, payload, modelConfig);
+    return handleBatchVideoGenerate(projectId, payload, modelConfig, episodeId);
   }
 
   if (action === "single_scene_frame") {
@@ -163,7 +164,7 @@ export async function POST(
   }
 
   if (action === "batch_scene_frame") {
-    return handleBatchSceneFrame(projectId, payload, modelConfig);
+    return handleBatchSceneFrame(projectId, payload, modelConfig, episodeId);
   }
 
   if (action === "single_reference_video") {
@@ -171,7 +172,7 @@ export async function POST(
   }
 
   if (action === "batch_reference_video") {
-    return handleBatchReferenceVideo(projectId, payload, modelConfig);
+    return handleBatchReferenceVideo(projectId, payload, modelConfig, episodeId);
   }
 
   if (action === "single_video_prompt") {
@@ -179,18 +180,19 @@ export async function POST(
   }
 
   if (action === "batch_video_prompt") {
-    return handleBatchVideoPrompt(projectId, payload, modelConfig);
+    return handleBatchVideoPrompt(projectId, payload, modelConfig, episodeId);
   }
 
   if (action === "video_assemble") {
-    return handleVideoAssembleSync(projectId, payload);
+    return handleVideoAssembleSync(projectId, payload, episodeId);
   }
 
   // Image/video generation - keep in task queue
   const task = await enqueueTask({
     type: action as NonNullable<TaskType>,
     projectId,
-    payload: { projectId, ...payload, modelConfig },
+    payload: { projectId, ...payload, modelConfig, episodeId },
+    ...(episodeId ? { episodeId } : {}),
   });
 
   return NextResponse.json(task, { status: 201 });
@@ -201,7 +203,8 @@ export async function POST(
 async function handleScriptGenerate(
   projectId: string,
   payload?: Record<string, unknown>,
-  modelConfig?: ModelConfig
+  modelConfig?: ModelConfig,
+  episodeId?: string
 ) {
   const idea = (payload?.idea as string) || "";
   if (!idea.trim()) {
@@ -216,10 +219,17 @@ async function handleScriptGenerate(
   }
 
   // Save the original idea before generating
-  await db
-    .update(projects)
-    .set({ idea, updatedAt: new Date() })
-    .where(eq(projects.id, projectId));
+  if (episodeId) {
+    await db
+      .update(episodes)
+      .set({ idea, updatedAt: new Date() })
+      .where(eq(episodes.id, episodeId));
+  } else {
+    await db
+      .update(projects)
+      .set({ idea, updatedAt: new Date() })
+      .where(eq(projects.id, projectId));
+  }
 
   const model = createLanguageModel(modelConfig.text);
 
@@ -230,11 +240,18 @@ async function handleScriptGenerate(
     temperature: 0.8,
     onFinish: async ({ text }) => {
       try {
-        await db
-          .update(projects)
-          .set({ script: text, updatedAt: new Date() })
-          .where(eq(projects.id, projectId));
-        console.log(`[ScriptGenerate] Saved generated script for ${projectId}`);
+        if (episodeId) {
+          await db
+            .update(episodes)
+            .set({ script: text, updatedAt: new Date() })
+            .where(eq(episodes.id, episodeId));
+        } else {
+          await db
+            .update(projects)
+            .set({ script: text, updatedAt: new Date() })
+            .where(eq(projects.id, projectId));
+        }
+        console.log(`[ScriptGenerate] Saved generated script for ${episodeId || projectId}`);
       } catch (err) {
         console.error("[ScriptGenerate] onFinish error:", err);
       }
@@ -248,14 +265,20 @@ async function handleScriptGenerate(
 
 async function handleScriptParseStream(
   projectId: string,
-  modelConfig?: ModelConfig
+  modelConfig?: ModelConfig,
+  episodeId?: string
 ) {
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(eq(projects.id, projectId));
+  let script: string | null = null;
 
-  if (!project?.script) {
+  if (episodeId) {
+    const [episode] = await db.select().from(episodes).where(eq(episodes.id, episodeId));
+    script = episode?.script ?? null;
+  } else {
+    const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
+    script = project?.script ?? null;
+  }
+
+  if (!script) {
     return NextResponse.json(
       { error: "Project or script not found" },
       { status: 404 }
@@ -274,17 +297,18 @@ async function handleScriptParseStream(
   const result = streamText({
     model,
     system: SCRIPT_PARSE_SYSTEM,
-    prompt: buildScriptParsePrompt(project.script),
+    prompt: buildScriptParsePrompt(script),
     temperature: 0.7,
     onFinish: async ({ text }) => {
       try {
         const screenplay = extractJSON(text);
         JSON.parse(screenplay); // validate JSON
-        await db
-          .update(projects)
-          .set({ updatedAt: new Date() })
-          .where(eq(projects.id, projectId));
-        console.log(`[ScriptParse] Parsed screenplay for ${projectId}`);
+        if (episodeId) {
+          await db.update(episodes).set({ updatedAt: new Date() }).where(eq(episodes.id, episodeId));
+        } else {
+          await db.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, projectId));
+        }
+        console.log(`[ScriptParse] Parsed screenplay for ${episodeId || projectId}`);
       } catch (err) {
         console.error("[ScriptParse] onFinish error:", err);
       }
@@ -298,14 +322,20 @@ async function handleScriptParseStream(
 
 async function handleCharacterExtract(
   projectId: string,
-  modelConfig?: ModelConfig
+  modelConfig?: ModelConfig,
+  episodeId?: string
 ) {
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(eq(projects.id, projectId));
+  let script: string | null = null;
 
-  if (!project?.script) {
+  if (episodeId) {
+    const [episode] = await db.select().from(episodes).where(eq(episodes.id, episodeId));
+    script = episode?.script ?? null;
+  } else {
+    const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
+    script = project?.script ?? null;
+  }
+
+  if (!script) {
     return NextResponse.json(
       { error: "Project or script not found" },
       { status: 404 }
@@ -319,15 +349,28 @@ async function handleCharacterExtract(
     );
   }
 
-  // Delete existing characters for re-extraction
-  await db.delete(characters).where(eq(characters.projectId, projectId));
+  // Delete existing characters scoped to this episode (or project-level if no episode)
+  if (episodeId) {
+    await db.delete(characters).where(
+      and(eq(characters.projectId, projectId), eq(characters.episodeId, episodeId))
+    );
+  } else {
+    await db.delete(characters).where(eq(characters.projectId, projectId));
+  }
+
+  // Fetch existing main characters for deduplication (only when extracting for an episode)
+  const existingMainChars = episodeId
+    ? await db.select().from(characters).where(
+        and(eq(characters.projectId, projectId), eq(characters.scope, "main"))
+      )
+    : [];
 
   const model = createLanguageModel(modelConfig.text);
 
   const result = streamText({
     model,
     system: CHARACTER_EXTRACT_SYSTEM,
-    prompt: buildCharacterExtractPrompt(project.script),
+    prompt: buildCharacterExtractPrompt(script),
     temperature: 0.5,
     onFinish: async ({ text }) => {
       try {
@@ -337,18 +380,39 @@ async function handleCharacterExtract(
           visualHint?: string;
         }>;
 
-        for (const char of extracted) {
+        let newCharacters = extracted;
+
+        // AI deduplication when extracting for an episode with existing main chars
+        if (episodeId && existingMainChars.length > 0) {
+          try {
+            const textProvider = resolveAIProvider(modelConfig);
+            const existingNames = existingMainChars.map((c) => c.name);
+            const dedupeResult = await textProvider.generateText(
+              `Existing characters: ${JSON.stringify(existingNames)}\n\nNewly extracted characters: ${JSON.stringify(extracted.map(c => c.name))}\n\nReturn a JSON array of ONLY the truly new character names that are NOT variants or aliases of existing characters. Consider nicknames, shortened names, and honorific variations as the same character.`,
+              { systemPrompt: "You are a character deduplication assistant. Return only a JSON array of strings.", temperature: 0 }
+            );
+            const newNames = new Set(JSON.parse(dedupeResult) as string[]);
+            newCharacters = extracted.filter((c) => newNames.has(c.name));
+          } catch (dedupeErr) {
+            console.warn("[CharacterExtract] Deduplication failed, inserting all:", dedupeErr);
+          }
+        }
+
+        const scope = episodeId ? "guest" : "main";
+        for (const char of newCharacters) {
           await db.insert(characters).values({
             id: ulid(),
             projectId,
             name: char.name,
             description: char.description,
             visualHint: char.visualHint ?? "",
+            scope,
+            episodeId: episodeId ?? null,
           });
         }
 
         console.log(
-          `[CharacterExtract] Extracted ${extracted.length} characters`
+          `[CharacterExtract] Extracted ${newCharacters.length} characters (scope=${scope})`
         );
       } catch (err) {
         console.error("[CharacterExtract] onFinish error:", err);
@@ -407,7 +471,8 @@ async function handleSingleCharacterImage(
 
 async function handleBatchCharacterImage(
   projectId: string,
-  modelConfig?: ModelConfig
+  modelConfig?: ModelConfig,
+  episodeId?: string
 ) {
   if (!modelConfig?.image) {
     return NextResponse.json(
@@ -419,7 +484,11 @@ async function handleBatchCharacterImage(
   const allCharacters = await db
     .select()
     .from(characters)
-    .where(eq(characters.projectId, projectId));
+    .where(
+      episodeId
+        ? and(eq(characters.projectId, projectId), or(isNull(characters.episodeId), eq(characters.episodeId, episodeId)))
+        : eq(characters.projectId, projectId)
+    );
 
   const needImages = allCharacters.filter((c) => !c.referenceImage);
   if (needImages.length === 0) {
@@ -456,18 +525,26 @@ async function handleBatchCharacterImage(
 
 async function handleShotSplitStream(
   projectId: string,
-  modelConfig?: ModelConfig
+  modelConfig?: ModelConfig,
+  episodeId?: string
 ) {
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(eq(projects.id, projectId));
+  let script: string | null = null;
+  let generationMode: string = "keyframe";
 
-  if (!project) {
-    return NextResponse.json(
-      { error: "Project not found" },
-      { status: 404 }
-    );
+  if (episodeId) {
+    const [episode] = await db.select().from(episodes).where(eq(episodes.id, episodeId));
+    if (!episode) {
+      return NextResponse.json({ error: "Episode not found" }, { status: 404 });
+    }
+    script = episode.script ?? null;
+    generationMode = episode.generationMode ?? "keyframe";
+  } else {
+    const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
+    if (!project) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+    script = project.script ?? null;
+    generationMode = project.generationMode ?? "keyframe";
   }
 
   if (!modelConfig?.text) {
@@ -480,7 +557,11 @@ async function handleShotSplitStream(
   const projectCharacters = await db
     .select()
     .from(characters)
-    .where(eq(characters.projectId, projectId));
+    .where(
+      episodeId
+        ? and(eq(characters.projectId, projectId), or(isNull(characters.episodeId), eq(characters.episodeId, episodeId)))
+        : eq(characters.projectId, projectId)
+    );
 
   const characterDescriptions = projectCharacters
     .map((c) => `${c.name}: ${c.description}`)
@@ -493,7 +574,7 @@ async function handleShotSplitStream(
   const model = createLanguageModel(modelConfig.text);
 
   const videoMaxDuration = getModelMaxDuration(modelConfig?.video?.modelId);
-  const shotSplitPrompt = buildShotSplitPrompt(project.script || "", characterDescriptions, characterVisualHints);
+  const shotSplitPrompt = buildShotSplitPrompt(script || "", characterDescriptions, characterVisualHints);
   console.log("[ShotSplit] characterVisualHints:", JSON.stringify(characterVisualHints));
   console.log("[ShotSplit] prompt:\n" + shotSplitPrompt);
   const result = streamText({
@@ -516,10 +597,13 @@ async function handleShotSplitStream(
         }>;
 
         // Create a new version record
+        const versionWhereClause = episodeId
+          ? and(eq(storyboardVersions.projectId, projectId), eq(storyboardVersions.episodeId, episodeId))
+          : eq(storyboardVersions.projectId, projectId);
         const [maxVersionRow] = await db
           .select({ maxNum: storyboardVersions.versionNum })
           .from(storyboardVersions)
-          .where(eq(storyboardVersions.projectId, projectId))
+          .where(versionWhereClause)
           .orderBy(desc(storyboardVersions.versionNum))
           .limit(1);
         const nextVersionNum = (maxVersionRow?.maxNum ?? 0) + 1;
@@ -535,6 +619,7 @@ async function handleShotSplitStream(
           label: versionLabel,
           versionNum: nextVersionNum,
           createdAt: new Date(),
+          episodeId: episodeId ?? null,
         });
 
         for (const shot of parsedShots) {
@@ -551,6 +636,7 @@ async function handleShotSplitStream(
             videoScript: shot.videoScript ?? null,
             cameraDirection: shot.cameraDirection || "static",
             duration: shot.duration,
+            episodeId: episodeId ?? null,
           });
 
           for (let i = 0; i < (shot.dialogues || []).length; i++) {
@@ -587,7 +673,8 @@ async function handleShotSplitStream(
 async function handleSingleShotRewrite(
   projectId: string,
   payload?: Record<string, unknown>,
-  modelConfig?: ModelConfig
+  modelConfig?: ModelConfig,
+  episodeId?: string
 ) {
   const shotId = payload?.shotId as string;
   if (!shotId) {
@@ -602,10 +689,15 @@ async function handleSingleShotRewrite(
     return NextResponse.json({ error: "Shot not found" }, { status: 404 });
   }
 
+  const shotEpisodeId = episodeId || shot.episodeId;
   const projectCharacters = await db
     .select()
     .from(characters)
-    .where(eq(characters.projectId, projectId));
+    .where(
+      shotEpisodeId
+        ? and(eq(characters.projectId, projectId), or(isNull(characters.episodeId), eq(characters.episodeId, shotEpisodeId)))
+        : eq(characters.projectId, projectId)
+    );
   const characterDescriptions = projectCharacters
     .map((c) => `${c.name}: ${c.description}`)
     .join("\n");
@@ -683,7 +775,8 @@ IMPORTANT: Keep the same scene, characters, and narrative intent. Only rephrase 
 async function handleBatchFrameGenerate(
   projectId: string,
   payload?: Record<string, unknown>,
-  modelConfig?: ModelConfig
+  modelConfig?: ModelConfig,
+  episodeId?: string
 ) {
   if (!modelConfig?.image) {
     return NextResponse.json(
@@ -694,12 +787,13 @@ async function handleBatchFrameGenerate(
 
   const batchVersionId = payload?.versionId as string | undefined;
   const imageOpts = ratioToImageOpts(payload?.ratio as string | undefined);
+  const shotWhereConditions = [eq(shots.projectId, projectId)];
+  if (batchVersionId) shotWhereConditions.push(eq(shots.versionId, batchVersionId));
+  if (episodeId) shotWhereConditions.push(eq(shots.episodeId, episodeId));
   const allShots = await db
     .select()
     .from(shots)
-    .where(batchVersionId
-      ? and(eq(shots.projectId, projectId), eq(shots.versionId, batchVersionId))
-      : eq(shots.projectId, projectId))
+    .where(and(...shotWhereConditions))
     .orderBy(asc(shots.sequence));
 
   if (allShots.length === 0) {
@@ -713,7 +807,11 @@ async function handleBatchFrameGenerate(
   const projectCharacters = await db
     .select()
     .from(characters)
-    .where(eq(characters.projectId, projectId));
+    .where(
+      episodeId
+        ? and(eq(characters.projectId, projectId), or(isNull(characters.episodeId), eq(characters.episodeId, episodeId)))
+        : eq(characters.projectId, projectId)
+    );
 
   const characterDescriptions = projectCharacters
     .map((c) => `${c.name}: ${c.description}`)
@@ -822,7 +920,8 @@ async function handleBatchFrameGenerate(
 async function handleSingleFrameGenerate(
   projectId: string,
   payload?: Record<string, unknown>,
-  modelConfig?: ModelConfig
+  modelConfig?: ModelConfig,
+  episodeId?: string
 ) {
   const shotId = payload?.shotId as string;
   if (!shotId) {
@@ -839,10 +938,15 @@ async function handleSingleFrameGenerate(
 
   const versionedUploadDir = await getVersionedUploadDir(shot.versionId);
 
+  const shotEpisodeId = episodeId || shot.episodeId;
   const projectCharacters = await db
     .select()
     .from(characters)
-    .where(eq(characters.projectId, projectId));
+    .where(
+      shotEpisodeId
+        ? and(eq(characters.projectId, projectId), or(isNull(characters.episodeId), eq(characters.episodeId, shotEpisodeId)))
+        : eq(characters.projectId, projectId)
+    );
 
   const characterDescriptions = projectCharacters
     .map((c) => `${c.name}: ${c.description}`)
@@ -1054,19 +1158,21 @@ async function handleSingleVideoGenerate(
 async function handleBatchVideoGenerate(
   projectId: string,
   payload?: Record<string, unknown>,
-  modelConfig?: ModelConfig
+  modelConfig?: ModelConfig,
+  episodeId?: string
 ) {
   if (!modelConfig?.video) {
     return NextResponse.json({ error: "No video model configured" }, { status: 400 });
   }
 
   const batchVersionId = payload?.versionId as string | undefined;
+  const shotWhereConditions = [eq(shots.projectId, projectId)];
+  if (batchVersionId) shotWhereConditions.push(eq(shots.versionId, batchVersionId));
+  if (episodeId) shotWhereConditions.push(eq(shots.episodeId, episodeId));
   const allShots = await db
     .select()
     .from(shots)
-    .where(batchVersionId
-      ? and(eq(shots.projectId, projectId), eq(shots.versionId, batchVersionId))
-      : eq(shots.projectId, projectId))
+    .where(and(...shotWhereConditions))
     .orderBy(asc(shots.sequence));
 
   const versionedUploadDir = batchVersionId
@@ -1084,7 +1190,11 @@ async function handleBatchVideoGenerate(
   const batchCharacters = await db
     .select()
     .from(characters)
-    .where(eq(characters.projectId, projectId));
+    .where(
+      episodeId
+        ? and(eq(characters.projectId, projectId), or(isNull(characters.episodeId), eq(characters.episodeId, episodeId)))
+        : eq(characters.projectId, projectId)
+    );
   const characterDescriptions = batchCharacters
     .map((c) => `${c.name}: ${c.description}`)
     .join("\n");
@@ -1249,7 +1359,8 @@ async function handleSingleSceneFrame(
 async function handleBatchSceneFrame(
   projectId: string,
   payload?: Record<string, unknown>,
-  modelConfig?: ModelConfig
+  modelConfig?: ModelConfig,
+  episodeId?: string
 ) {
   if (!modelConfig?.image) {
     return NextResponse.json({ error: "No image model configured" }, { status: 400 });
@@ -1258,12 +1369,13 @@ async function handleBatchSceneFrame(
   const overwrite = payload?.overwrite === true;
   const batchVersionId = payload?.versionId as string | undefined;
 
+  const shotWhereConditions = [eq(shots.projectId, projectId)];
+  if (batchVersionId) shotWhereConditions.push(eq(shots.versionId, batchVersionId));
+  if (episodeId) shotWhereConditions.push(eq(shots.episodeId, episodeId));
   const allShots = await db
     .select()
     .from(shots)
-    .where(batchVersionId
-      ? and(eq(shots.projectId, projectId), eq(shots.versionId, batchVersionId))
-      : eq(shots.projectId, projectId))
+    .where(and(...shotWhereConditions))
     .orderBy(asc(shots.sequence));
 
   const versionedUploadDir = batchVersionId
@@ -1280,7 +1392,11 @@ async function handleBatchSceneFrame(
   const projectCharacters = await db
     .select()
     .from(characters)
-    .where(eq(characters.projectId, projectId));
+    .where(
+      episodeId
+        ? and(eq(characters.projectId, projectId), or(isNull(characters.episodeId), eq(characters.episodeId, episodeId)))
+        : eq(characters.projectId, projectId)
+    );
 
   const charRefs = projectCharacters
     .filter((c) => !!c.referenceImage)
@@ -1522,7 +1638,8 @@ async function handleSingleReferenceVideo(
 async function handleBatchReferenceVideo(
   projectId: string,
   payload?: Record<string, unknown>,
-  modelConfig?: ModelConfig
+  modelConfig?: ModelConfig,
+  episodeId?: string
 ) {
   if (!modelConfig?.video) {
     return NextResponse.json({ error: "No video model configured" }, { status: 400 });
@@ -1532,12 +1649,13 @@ async function handleBatchReferenceVideo(
   }
 
   const batchVersionId = payload?.versionId as string | undefined;
+  const shotWhereConditions = [eq(shots.projectId, projectId)];
+  if (batchVersionId) shotWhereConditions.push(eq(shots.versionId, batchVersionId));
+  if (episodeId) shotWhereConditions.push(eq(shots.episodeId, episodeId));
   const allShots = await db
     .select()
     .from(shots)
-    .where(batchVersionId
-      ? and(eq(shots.projectId, projectId), eq(shots.versionId, batchVersionId))
-      : eq(shots.projectId, projectId))
+    .where(and(...shotWhereConditions))
     .orderBy(asc(shots.sequence));
 
   const versionedUploadDir = batchVersionId
@@ -1555,7 +1673,11 @@ async function handleBatchReferenceVideo(
   const projectCharacters = await db
     .select()
     .from(characters)
-    .where(eq(characters.projectId, projectId));
+    .where(
+      episodeId
+        ? and(eq(characters.projectId, projectId), or(isNull(characters.episodeId), eq(characters.episodeId, episodeId)))
+        : eq(characters.projectId, projectId)
+    );
 
   // Toonflow pattern: collect all character reference images
   const charRefs = projectCharacters
@@ -1705,31 +1827,42 @@ async function handleBatchReferenceVideo(
 
 // --- video_assemble: synchronous ffmpeg concat + subtitle burn ---
 
-async function handleVideoAssembleSync(projectId: string, payload?: Record<string, unknown>) {
-  const [project] = await db.select({ generationMode: projects.generationMode }).from(projects).where(eq(projects.id, projectId));
+async function handleVideoAssembleSync(projectId: string, payload?: Record<string, unknown>, episodeId?: string) {
+  let generationModeValue: string = "keyframe";
+  if (episodeId) {
+    const [episode] = await db.select({ generationMode: episodes.generationMode }).from(episodes).where(eq(episodes.id, episodeId));
+    generationModeValue = episode?.generationMode ?? "keyframe";
+  } else {
+    const [project] = await db.select({ generationMode: projects.generationMode }).from(projects).where(eq(projects.id, projectId));
+    generationModeValue = project?.generationMode ?? "keyframe";
+  }
 
   let versionId = payload?.versionId as string | undefined;
 
-  // If no versionId provided, fall back to the latest version for this project
+  // If no versionId provided, fall back to the latest version for this project/episode
   if (!versionId) {
+    const versionWhere = episodeId
+      ? and(eq(storyboardVersions.projectId, projectId), eq(storyboardVersions.episodeId, episodeId))
+      : eq(storyboardVersions.projectId, projectId);
     const [latestVersion] = await db
       .select({ id: storyboardVersions.id })
       .from(storyboardVersions)
-      .where(eq(storyboardVersions.projectId, projectId))
+      .where(versionWhere)
       .orderBy(desc(storyboardVersions.versionNum))
       .limit(1);
     versionId = latestVersion?.id;
   }
 
+  const shotWhereConditions = [eq(shots.projectId, projectId)];
+  if (versionId) shotWhereConditions.push(eq(shots.versionId, versionId));
+  if (episodeId) shotWhereConditions.push(eq(shots.episodeId, episodeId));
   const projectShots = await db
     .select()
     .from(shots)
-    .where(versionId
-      ? and(eq(shots.projectId, projectId), eq(shots.versionId, versionId))
-      : eq(shots.projectId, projectId))
+    .where(and(...shotWhereConditions))
     .orderBy(asc(shots.sequence));
 
-  const isReference = project?.generationMode === "reference";
+  const isReference = generationModeValue === "reference";
   const videoPaths = projectShots
     .map((s) => isReference ? s.referenceVideoUrl : s.videoUrl)
     .filter(Boolean) as string[];
@@ -1859,15 +1992,21 @@ async function handleSingleVideoPrompt(
 async function handleBatchVideoPrompt(
   projectId: string,
   payload?: Record<string, unknown>,
-  modelConfig?: ModelConfig
+  modelConfig?: ModelConfig,
+  episodeId?: string
 ) {
   const batchVersionId = payload?.versionId as string | undefined;
 
-  const batchShots = batchVersionId
-    ? await db.select().from(shots).where(and(eq(shots.projectId, projectId), eq(shots.versionId, batchVersionId))).orderBy(asc(shots.sequence))
-    : await db.select().from(shots).where(eq(shots.projectId, projectId)).orderBy(asc(shots.sequence));
+  const shotWhereConditions = [eq(shots.projectId, projectId)];
+  if (batchVersionId) shotWhereConditions.push(eq(shots.versionId, batchVersionId));
+  if (episodeId) shotWhereConditions.push(eq(shots.episodeId, episodeId));
+  const batchShots = await db.select().from(shots).where(and(...shotWhereConditions)).orderBy(asc(shots.sequence));
 
-  const batchCharacters = await db.select().from(characters).where(eq(characters.projectId, projectId));
+  const batchCharacters = await db.select().from(characters).where(
+    episodeId
+      ? and(eq(characters.projectId, projectId), or(isNull(characters.episodeId), eq(characters.episodeId, episodeId)))
+      : eq(characters.projectId, projectId)
+  );
 
   // Only process shots that have at least one frame
   const eligible = batchShots.filter((s) => s.sceneRefFrame || s.firstFrame || s.lastFrame);
