@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { characters } from "@/lib/db/schema";
+import { characters, characterRelations } from "@/lib/db/schema";
 import { resolveAIProvider } from "@/lib/ai/provider-factory";
 import type { ModelConfigPayload } from "@/lib/ai/provider-factory";
 import { buildCharacterExtractPrompt } from "@/lib/ai/prompts/character-extract";
@@ -7,6 +7,22 @@ import { resolvePrompt } from "@/lib/ai/prompts/resolver";
 import { and, eq } from "drizzle-orm";
 import { ulid } from "ulid";
 import type { Task } from "@/lib/task-queue";
+
+interface ExtractedChar {
+  name: string;
+  description: string;
+  visualHint?: string;
+  heightCm?: number;
+  bodyType?: string;
+  performanceStyle?: string;
+}
+
+interface ExtractedRelation {
+  characterA: string;
+  characterB: string;
+  relationType: string;
+  description?: string;
+}
 
 export async function handleCharacterExtract(task: Task) {
   const payload = task.payload as {
@@ -28,14 +44,20 @@ export async function handleCharacterExtract(task: Task) {
     { systemPrompt, temperature: 0.5 }
   );
 
-  const extracted = JSON.parse(result) as Array<{
-    name: string;
-    description: string;
-    visualHint?: string;
-    heightCm?: number;
-    bodyType?: string;
-    performanceStyle?: string;
-  }>;
+  const parsed = JSON.parse(result);
+
+  // Support both formats: new { characters, relationships } and legacy array
+  let extracted: ExtractedChar[];
+  let relationships: ExtractedRelation[] = [];
+
+  if (Array.isArray(parsed)) {
+    // Legacy format: plain array of characters
+    extracted = parsed;
+  } else {
+    // New format: { characters: [...], relationships: [...] }
+    extracted = parsed.characters || [];
+    relationships = parsed.relationships || [];
+  }
 
   let newCharacters = extracted;
 
@@ -83,6 +105,36 @@ export async function handleCharacterExtract(task: Task) {
       })
       .returning();
     created.push(record);
+  }
+
+  // Auto-create character relationships from AI extraction
+  if (relationships.length > 0) {
+    // Build name→id map from ALL project characters (existing + newly created)
+    const allChars = await db
+      .select()
+      .from(characters)
+      .where(eq(characters.projectId, payload.projectId));
+    const nameToId = new Map(allChars.map((c) => [c.name, c.id]));
+
+    for (const rel of relationships) {
+      const aId = nameToId.get(rel.characterA);
+      const bId = nameToId.get(rel.characterB);
+      if (aId && bId && aId !== bId) {
+        try {
+          await db.insert(characterRelations).values({
+            id: ulid(),
+            projectId: payload.projectId,
+            characterAId: aId,
+            characterBId: bId,
+            relationType: rel.relationType || "neutral",
+            description: rel.description || "",
+          });
+        } catch (e) {
+          // Skip duplicates or other errors silently
+          console.warn(`[CharacterExtract] Skipped relation ${rel.characterA}↔${rel.characterB}:`, e);
+        }
+      }
+    }
   }
 
   return { characters: created };
