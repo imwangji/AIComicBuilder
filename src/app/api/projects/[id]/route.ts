@@ -108,12 +108,13 @@ export async function PATCH(
     title: string;
     idea: string;
     script: string;
+    outline: string;
     status: "draft" | "processing" | "completed";
     generationMode: "keyframe" | "reference";
     useProjectPrompts: number;
   }>;
 
-  const { title, idea, script, status, generationMode, useProjectPrompts } = body;
+  const { title, idea, script, outline, status, generationMode, useProjectPrompts } = body;
 
   const [updated] = await db
     .update(projects)
@@ -121,6 +122,7 @@ export async function PATCH(
       ...(title !== undefined && { title }),
       ...(idea !== undefined && { idea }),
       ...(script !== undefined && { script }),
+      ...(outline !== undefined && { outline }),
       ...(status !== undefined && { status }),
       ...(generationMode !== undefined && { generationMode }),
       ...(useProjectPrompts !== undefined && { useProjectPrompts }),

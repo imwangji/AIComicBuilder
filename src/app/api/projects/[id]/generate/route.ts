@@ -120,6 +120,10 @@ export async function POST(
 
   const { action, payload, modelConfig, episodeId } = body;
 
+  if (action === "script_outline") {
+    return handleScriptOutlineAction(projectId, userId, payload, modelConfig, episodeId);
+  }
+
   if (action === "script_generate") {
     return handleScriptGenerate(projectId, userId, payload, modelConfig, episodeId);
   }
@@ -207,6 +211,37 @@ export async function POST(
   return NextResponse.json(task, { status: 201 });
 }
 
+// --- script_outline: enqueue outline generation task ---
+
+async function handleScriptOutlineAction(
+  projectId: string,
+  userId: string,
+  payload?: Record<string, unknown>,
+  modelConfig?: ModelConfig,
+  episodeId?: string
+) {
+  const idea = (payload?.idea as string) || "";
+  if (!idea.trim()) {
+    return NextResponse.json({ error: "No idea provided" }, { status: 400 });
+  }
+
+  if (!modelConfig?.text) {
+    return NextResponse.json(
+      { error: "No text model configured" },
+      { status: 400 }
+    );
+  }
+
+  const task = await enqueueTask({
+    type: "script_outline",
+    projectId,
+    payload: { projectId, idea, modelConfig, episodeId, userId },
+    ...(episodeId ? { episodeId } : {}),
+  });
+
+  return NextResponse.json(task, { status: 201 });
+}
+
 // --- script_generate: stream plain text screenplay from an idea ---
 
 async function handleScriptGenerate(
@@ -241,13 +276,27 @@ async function handleScriptGenerate(
       .where(eq(projects.id, projectId));
   }
 
+  // Fetch outline if available to inject into the prompt
+  let outline = "";
+  if (episodeId) {
+    const [ep] = await db.select({ outline: episodes.outline }).from(episodes).where(eq(episodes.id, episodeId));
+    outline = ep?.outline || "";
+  } else {
+    const [proj] = await db.select({ outline: projects.outline }).from(projects).where(eq(projects.id, projectId));
+    outline = proj?.outline || "";
+  }
+
+  const outlineContext = outline
+    ? `\n\n【Story Outline - follow this structure strictly】\n${outline}\n\n`
+    : "";
+
   const model = createLanguageModel(modelConfig.text);
   const scriptGenerateSystem = await resolvePrompt("script_generate", { userId, projectId });
 
   const result = streamText({
     model,
     system: scriptGenerateSystem,
-    prompt: buildScriptGeneratePrompt(idea),
+    prompt: outlineContext + buildScriptGeneratePrompt(idea),
     temperature: 0.8,
     onFinish: async ({ text }) => {
       try {

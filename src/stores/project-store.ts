@@ -53,6 +53,7 @@ interface Project {
   title: string;
   idea: string;
   script: string;
+  outline?: string;
   status: string;
   finalVideoUrl: string | null;
   generationMode: "keyframe" | "reference";

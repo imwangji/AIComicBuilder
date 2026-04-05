@@ -6,6 +6,7 @@ export const projects = sqliteTable("projects", {
   title: text("title").notNull(),
   idea: text("idea").default(""),
   script: text("script").default(""),
+  outline: text("outline").default(""),
   status: text("status", {
     enum: ["draft", "processing", "completed"],
   })
@@ -31,6 +32,7 @@ export const episodes = sqliteTable("episodes", {
   sequence: integer("sequence").notNull(),
   idea: text("idea").default(""),
   script: text("script").default(""),
+  outline: text("outline").default(""),
   status: text("status", {
     enum: ["draft", "processing", "completed"],
   })
@@ -204,6 +206,7 @@ export const tasks = sqliteTable("tasks", {
   }),
   type: text("type", {
     enum: [
+      "script_outline",
       "script_parse",
       "character_extract",
       "character_image",

@@ -1,0 +1,2 @@
+ALTER TABLE projects ADD COLUMN outline TEXT DEFAULT '';
+ALTER TABLE episodes ADD COLUMN outline TEXT DEFAULT '';
