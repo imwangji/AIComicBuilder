@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { shots, characters, projects, episodes } from "@/lib/db/schema";
+import { shots, characters, projects, episodes, characterCostumes } from "@/lib/db/schema";
 import { resolveImageProvider } from "@/lib/ai/provider-factory";
 import type { ModelConfigPayload } from "@/lib/ai/provider-factory";
 import {
@@ -30,15 +30,33 @@ export async function handleFrameGenerate(task: Task) {
     .from(characters)
     .where(eq(characters.projectId, payload.projectId));
 
-  const characterDescriptions = projectCharacters
-    .map((c) => {
-      let desc = `${c.name}: ${c.description}`;
-      if (c.performanceStyle) {
-        desc += ` [Performance: ${c.performanceStyle}]`;
+  // Parse costume overrides from shot
+  const rawCostumeOverrides = shot.costumeOverrides as string | null | undefined;
+  const costumeOverrides: Record<string, string> = rawCostumeOverrides && rawCostumeOverrides.trim()
+    ? JSON.parse(rawCostumeOverrides)
+    : {};
+
+  // Build character descriptions, applying costume overrides when present
+  const characterDescParts: string[] = [];
+  for (const c of projectCharacters) {
+    let description = c.description;
+    const costumeId = costumeOverrides[c.id];
+    if (costumeId) {
+      const [costume] = await db
+        .select()
+        .from(characterCostumes)
+        .where(eq(characterCostumes.id, costumeId));
+      if (costume?.description) {
+        description = `${c.description}. Current outfit: ${costume.description}`;
       }
-      return desc;
-    })
-    .join("\n");
+    }
+    let desc = `${c.name}: ${description}`;
+    if (c.performanceStyle) {
+      desc += ` [Performance: ${c.performanceStyle}]`;
+    }
+    characterDescParts.push(desc);
+  }
+  const characterDescriptions = characterDescParts.join("\n");
 
   const [previousShot] = await db
     .select()

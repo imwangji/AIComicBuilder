@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { shots, projects, dialogues, characters } from "@/lib/db/schema";
+import { shots, projects, episodes, dialogues, characters } from "@/lib/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { assembleVideo } from "@/lib/video/ffmpeg";
 import type { Task } from "@/lib/task-queue";
@@ -75,12 +75,42 @@ export async function handleVideoAssemble(task: Task) {
     });
   }
 
+  // Load project for title card and BGM
+  const [project] = await db
+    .select({ title: projects.title, bgmUrl: projects.bgmUrl })
+    .from(projects)
+    .where(eq(projects.id, payload.projectId));
+
+  // Resolve BGM path: episode-level overrides project-level
+  let bgmPath: string | undefined;
+  if (project?.bgmUrl) {
+    bgmPath = project.bgmUrl;
+  }
+  // Check if shots belong to an episode and if it has its own BGM
+  const episodeId = completedShots[0]?.episodeId;
+  if (episodeId) {
+    const [ep] = await db
+      .select({ bgmUrl: episodes.bgmUrl })
+      .from(episodes)
+      .where(eq(episodes.id, episodeId));
+    if (ep?.bgmUrl) bgmPath = ep.bgmUrl;
+  }
+
+  // Title and credits cards
+  const titleCard = project?.title
+    ? { text: project.title, duration: 3 }
+    : undefined;
+  const creditsCard = { text: "Made with AIComicBuilder", duration: 2 };
+
   const result = await assembleVideo({
     videoPaths,
     subtitles,
     projectId: payload.projectId,
     shotDurations: completedShots.map((s) => s.duration ?? 10),
     transitions,
+    bgmPath,
+    titleCard,
+    creditsCard,
   });
 
   await db
