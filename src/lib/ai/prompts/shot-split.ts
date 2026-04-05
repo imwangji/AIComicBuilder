@@ -42,12 +42,25 @@ Output a JSON array of SCENES. Each scene groups related shots that share the sa
           }
         ],
         "cameraDirection": "Specific camera movement instruction",
+        "compositionGuide": "rule_of_thirds",
         "transitionIn": "cut",
         "transitionOut": "cut"
       }
     ]
   }
 ]
+
+=== compositionGuide ===
+- "compositionGuide": recommended composition technique for this shot. Values: "rule_of_thirds" | "golden_ratio" | "symmetric" | "diagonal" | "frame_within_frame" | "leading_lines" | "center_dominant". Choose based on scene mood and action.
+
+## COMPOSITION GUIDELINES
+- "rule_of_thirds": Subject at 1/3 intersection. Best for: conversations, character introductions, environmental shots
+- "golden_ratio": Natural spiral focus. Best for: beauty shots, landscapes, emotional moments
+- "symmetric": Mirror composition. Best for: power, authority, confrontation, ceremony
+- "diagonal": Dynamic diagonal lines. Best for: action, tension, chase, movement
+- "frame_within_frame": Subject framed by doorway/window/arch. Best for: isolation, surveillance, transition
+- "leading_lines": Lines guide eye to subject. Best for: journeys, reveals, depth
+- "center_dominant": Subject dead center. Best for: impact, announcement, portrait
 
 === transitionIn & transitionOut ===
 - Values: "cut" | "dissolve" | "fade_in" | "fade_out" | "wipeleft" | "circleopen". Default "cut".
@@ -152,7 +165,8 @@ export const SHOT_SPLIT_SYSTEM = buildShotSplitSystem(15);
 export function buildShotSplitPrompt(
   screenplay: string,
   characters: string,
-  characterVisualHints?: Array<{ name: string; visualHint: string }>
+  characterVisualHints?: Array<{ name: string; visualHint: string }>,
+  colorPalette?: string
 ): string {
   const hintBlock = characterVisualHints?.length
     ? `\n--- CHARACTER VISUAL IDENTIFIERS (MANDATORY) ---\n${characterVisualHints.map((c) => `${c.name}：${c.visualHint}`).join("\n")}\n--- END ---\n\nCRITICAL: Whenever a character appears in videoScript, motionScript, startFrame, or endFrame, you MUST write their name followed by their visual identifier in parentheses using EXACTLY the text above. Example: 天枢真君（银发金瞳）. Never invent alternative descriptions — always reuse the exact identifier string provided.`
@@ -170,5 +184,5 @@ ${characters}
 ${hintBlock}
 Important: reference characters by their exact names and ensure their visual descriptions in startFrame/endFrame align with the character references above.
 
-IMPORTANT: Your output language MUST match the language of the screenplay above. If it is in Chinese, write all fields in Chinese (except cameraDirection).`;
+IMPORTANT: Your output language MUST match the language of the screenplay above. If it is in Chinese, write all fields in Chinese (except cameraDirection).${colorPalette ? `\n\n## GLOBAL COLOR PALETTE\nAll shots must use this color scheme: ${colorPalette}. Describe scenes with colors consistent with this palette.\n` : ""}`;
 }

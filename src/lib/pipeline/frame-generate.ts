@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { shots, characters } from "@/lib/db/schema";
+import { shots, characters, projects, episodes } from "@/lib/db/schema";
 import { resolveImageProvider } from "@/lib/ai/provider-factory";
 import type { ModelConfigPayload } from "@/lib/ai/provider-factory";
 import {
@@ -53,19 +53,40 @@ export async function handleFrameGenerate(task: Task) {
   const frameFirstSlots = await resolveSlotContents("frame_generate_first", { userId, projectId });
   const frameLastSlots = await resolveSlotContents("frame_generate_last", { userId, projectId });
 
+  // Fetch color palette from project (or episode)
+  let colorPalette = "";
+  if (shot.episodeId) {
+    const [episode] = await db.select().from(episodes).where(eq(episodes.id, shot.episodeId));
+    if (episode?.colorPalette) colorPalette = episode.colorPalette;
+  }
+  if (!colorPalette) {
+    const [project] = await db.select().from(projects).where(eq(projects.id, payload.projectId));
+    if (project?.colorPalette) colorPalette = project.colorPalette;
+  }
+
+  // Build composition suffix
+  let compositionSuffix = "";
+  if (shot.compositionGuide) {
+    compositionSuffix += `, ${shot.compositionGuide.replace(/_/g, " ")} composition`;
+  }
+  if (colorPalette) {
+    compositionSuffix += `\n\nGLOBAL COLOR PALETTE (mandatory): ${colorPalette}. All frames must adhere to this color scheme.`;
+  }
+
   await db
     .update(shots)
     .set({ status: "generating" })
     .where(eq(shots.id, payload.shotId));
 
   // Generate first frame using startFrameDesc
-  const firstFramePrompt = buildFirstFramePrompt({
+  let firstFramePrompt = buildFirstFramePrompt({
     sceneDescription: shot.prompt || "",
     startFrameDesc: shot.startFrameDesc || shot.prompt || "",
     characterDescriptions,
     previousLastFrame: previousShot?.lastFrame || undefined,
     slotContents: frameFirstSlots,
   });
+  if (compositionSuffix) firstFramePrompt += compositionSuffix;
   const firstFramePath = await ai.generateImage(firstFramePrompt, {
     quality: "hd",
     referenceImages: projectCharacters
@@ -74,13 +95,14 @@ export async function handleFrameGenerate(task: Task) {
   });
 
   // Generate last frame using endFrameDesc
-  const lastFramePrompt = buildLastFramePrompt({
+  let lastFramePrompt = buildLastFramePrompt({
     sceneDescription: shot.prompt || "",
     endFrameDesc: shot.endFrameDesc || shot.prompt || "",
     characterDescriptions,
     firstFramePath,
     slotContents: frameLastSlots,
   });
+  if (compositionSuffix) lastFramePrompt += compositionSuffix;
   const charRefImages = projectCharacters
     .map((c) => c.referenceImage)
     .filter(Boolean) as string[];

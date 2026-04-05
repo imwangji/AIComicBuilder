@@ -15,6 +15,7 @@ export const projects = sqliteTable("projects", {
   finalVideoUrl: text("final_video_url"),
   generationMode: text('generation_mode', { enum: ['keyframe', 'reference'] }).notNull().default('keyframe'),
   useProjectPrompts: integer("use_project_prompts").notNull().default(0),
+  colorPalette: text("color_palette").default(""),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -44,6 +45,7 @@ export const episodes = sqliteTable("episodes", {
   description: text("description").default(""),
   keywords: text("keywords").default(""),
   scriptHash: text("script_hash").default(""),
+  colorPalette: text("color_palette").default(""),
   finalVideoUrl: text("final_video_url"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
@@ -141,6 +143,7 @@ export const shots = sqliteTable("shots", {
     onDelete: "cascade",
   }),
   sceneId: text("scene_id"),
+  compositionGuide: text("composition_guide").default(""),
   isStale: integer("is_stale").notNull().default(0),
   status: text("status", {
     enum: ["pending", "generating", "completed", "failed"],

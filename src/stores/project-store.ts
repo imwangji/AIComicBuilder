@@ -37,6 +37,7 @@ interface Shot {
   sceneRefFrame: string | null;
   sceneId?: string;
   videoPrompt: string | null;
+  compositionGuide?: string;
   qualityScore?: number;
   qualityIssues?: string[];
   isStale?: boolean;
