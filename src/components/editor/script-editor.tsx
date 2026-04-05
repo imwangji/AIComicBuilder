@@ -242,7 +242,7 @@ export function ScriptEditor() {
           </h2>
         </div>
         <div className="flex items-center gap-2">
-          <PromptEditButton promptKeys="script_generate" projectId={project.id} />
+          <PromptEditButton promptKeys={["script_outline", "script_generate"]} projectId={project.id} />
           <InlineModelPicker capability="text" />
           {saving && (
             <span className="flex items-center gap-1.5 text-xs text-[--text-muted]">
