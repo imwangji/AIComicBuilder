@@ -124,6 +124,22 @@ export async function handleFrameGenerate(task: Task) {
     .set({ status: "generating" })
     .where(eq(shots.id, payload.shotId));
 
+  // Smart character matching: only pass characters mentioned in frame prompts
+  const charsWithRefs = projectCharacters.filter((c) => !!c.referenceImage);
+  const firstFrameContext = [shot.startFrameDesc, shot.prompt].filter(Boolean).join(" ");
+  const lastFrameContext = [shot.endFrameDesc, shot.prompt].filter(Boolean).join(" ");
+
+  const firstFrameChars = charsWithRefs.filter((c) => firstFrameContext.includes(c.name));
+  const lastFrameChars = charsWithRefs.filter((c) => lastFrameContext.includes(c.name));
+
+  // Fallback: if no character matched, use first 3
+  const firstFrameCharRefs = (firstFrameChars.length > 0 ? firstFrameChars : charsWithRefs.slice(0, 3))
+    .map((c) => c.referenceImage as string);
+  const lastFrameCharRefs = (lastFrameChars.length > 0 ? lastFrameChars : charsWithRefs.slice(0, 3))
+    .map((c) => c.referenceImage as string);
+
+  console.log(`[FrameGenerate] Shot ${shot.sequence}: first frame chars: ${firstFrameChars.map(c => c.name).join(", ") || "fallback"}, last frame chars: ${lastFrameChars.map(c => c.name).join(", ") || "fallback"}`);
+
   // Generate first frame using startFrameDesc
   let firstFramePrompt = buildFirstFramePrompt({
     sceneDescription: shot.prompt || "",
@@ -135,9 +151,7 @@ export async function handleFrameGenerate(task: Task) {
   if (compositionSuffix) firstFramePrompt += compositionSuffix;
   const firstFramePath = await ai.generateImage(firstFramePrompt, {
     quality: "hd",
-    referenceImages: projectCharacters
-      .map((c) => c.referenceImage)
-      .filter(Boolean) as string[],
+    referenceImages: firstFrameCharRefs,
   });
 
   // Generate last frame using endFrameDesc
@@ -149,12 +163,9 @@ export async function handleFrameGenerate(task: Task) {
     slotContents: frameLastSlots,
   });
   if (compositionSuffix) lastFramePrompt += compositionSuffix;
-  const charRefImages = projectCharacters
-    .map((c) => c.referenceImage)
-    .filter(Boolean) as string[];
   const lastFramePath = await ai.generateImage(lastFramePrompt, {
     quality: "hd",
-    referenceImages: [firstFramePath, ...charRefImages],
+    referenceImages: [firstFramePath, ...lastFrameCharRefs],
   });
 
   await db

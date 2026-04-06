@@ -922,6 +922,27 @@ export function ShotCard({
                         className={`w-full resize-none border-0 bg-transparent px-2 py-1 text-[11px] leading-snug text-[--text-secondary] placeholder:text-[--text-muted] focus:outline-none`}
                       />
                     </div>
+                    {/* Character tags */}
+                    <div className="flex items-center gap-1 flex-wrap border-t border-[--border-subtle] px-2 py-1.5">
+                      <span className="text-[9px] text-[--text-muted] shrink-0">{t("shot.refChars")}:</span>
+                      {projectCharacters.map((char) => {
+                        // Detect if character is mentioned in this frame's prompt
+                        const framePrompt = isStart ? editStartFrame : editEndFrame;
+                        const isInPrompt = framePrompt?.includes(char.name);
+                        return (
+                          <span
+                            key={char.id}
+                            className={`rounded-full px-1.5 py-0.5 text-[9px] ${
+                              isInPrompt
+                                ? "bg-primary/10 text-primary border border-primary/30"
+                                : "bg-[--bg-muted] text-[--text-muted] border border-transparent"
+                            }`}
+                          >
+                            {char.name}
+                          </span>
+                        );
+                      })}
+                    </div>
                     {/* Action bar */}
                     <div className="flex items-center gap-1 border-t border-[--border-subtle] px-1.5 py-1">
                       <button
