@@ -1718,6 +1718,8 @@ async function handleBatchSceneFrame(
   }
 
   const overwrite = payload?.overwrite === true;
+  const ratio = (payload?.ratio as string) || "16:9";
+  const imageOpts = ratioToImageOpts(ratio);
   const batchVersionId = payload?.versionId as string | undefined;
 
   const shotWhereConditions = [eq(shots.projectId, projectId)];
@@ -1791,6 +1793,7 @@ async function handleBatchSceneFrame(
 
       const sceneFramePath = await imageProvider.generateImage(sceneFramePrompt, {
         quality: "hd",
+        ...imageOpts,
         referenceImages: charRefs.map((c) => c.imagePath),
       });
 
@@ -1828,6 +1831,7 @@ async function handleBatchSceneFrame(
         try {
           const refPath = await imageProvider.generateImage(refPrompt, {
             quality: "hd",
+            ...imageOpts,
             referenceImages: charRefs.map((c) => c.imagePath),
           });
           generatedRefs.push(refPath);
@@ -2650,8 +2654,11 @@ async function handleBatchRefImageGenerate(
 
     for (const entry of pending) {
       try {
+        const batchRatio = (payload?.ratio as string) || "16:9";
+        const batchImageOpts = ratioToImageOpts(batchRatio);
         const imagePath = await imageProvider.generateImage(entry.prompt, {
           quality: "hd",
+          ...batchImageOpts,
           referenceImages: charRefs,
         });
         entry.imagePath = imagePath;
