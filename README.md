@@ -235,6 +235,8 @@ https://www.bilibili.com/video/BV1hTw1zAEgY/
 
 [《拳魂·最后一回合》-seedance2](https://www.bilibili.com/video/BV1fVAuzLEAX/)
 
+[基于 Seedance 2.0 生成](https://www.bilibili.com/video/BV1g5SDBSECs/)
+
 
 ## License
 
