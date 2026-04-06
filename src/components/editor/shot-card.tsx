@@ -800,14 +800,28 @@ export function ShotCard({
                         )}
                       </div>
                       {/* Editable prompt with auto-save */}
-                      <textarea
-                        value={getRefPromptValue(ref.id, ref.prompt)}
-                        onChange={(e) => handleRefPromptChange(ref.id, e.target.value)}
-                        onBlur={(e) => handleUpdateRefPrompt(ref.id, e.target.value)}
-                        placeholder={t("shot.refImagePrompt")}
-                        rows={4}
-                        className="w-full resize-none border-0 border-t border-[--border-subtle] bg-transparent px-2 py-1.5 text-[11px] leading-snug text-[--text-secondary] placeholder:text-[--text-muted] focus:outline-none"
-                      />
+                      <div className="border-t border-[--border-subtle]">
+                        <div className="flex items-center gap-1 px-2 pt-1">
+                          <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-violet-500">{t("shot.refImagePrompt")}</p>
+                          <AiOptimizeButton
+                            value={getRefPromptValue(ref.id, ref.prompt)}
+                            onOptimized={(v) => {
+                              setLocalRefPrompts((prev) => ({ ...prev, [ref.id]: v }));
+                              handleUpdateRefPrompt(ref.id, v);
+                            }}
+                            fieldLabel="refImagePrompt"
+                            projectId={projectId}
+                          />
+                        </div>
+                        <textarea
+                          value={getRefPromptValue(ref.id, ref.prompt)}
+                          onChange={(e) => handleRefPromptChange(ref.id, e.target.value)}
+                          onBlur={(e) => handleUpdateRefPrompt(ref.id, e.target.value)}
+                          placeholder={t("shot.refImagePrompt")}
+                          rows={4}
+                          className="w-full resize-none border-0 bg-transparent px-2 py-1 text-[11px] leading-snug text-[--text-secondary] placeholder:text-[--text-muted] focus:outline-none"
+                        />
+                      </div>
                       {/* Character tags */}
                       <div className="flex items-center gap-1 flex-wrap border-t border-[--border-subtle] px-2 py-1.5">
                         <span className="text-[9px] text-[--text-muted] shrink-0">{t("shot.refChars") || "Chars"}:</span>
