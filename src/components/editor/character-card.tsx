@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useTranslations } from "next-intl";
 import { uploadUrl } from "@/lib/utils/upload-url";
 import { useModelStore, type ModelRef } from "@/stores/model-store";
-import { Sparkles, Loader2, Copy, Check, ArrowUpCircle, Trash2 } from "lucide-react";
+import { Sparkles, Loader2, Copy, Check, ArrowUpCircle, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { InlineModelPicker } from "@/components/editor/model-selector";
 import { apiFetch } from "@/lib/api-fetch";
 import { useModelGuard } from "@/hooks/use-model-guard";
@@ -22,6 +22,7 @@ interface CharacterCardProps {
   description: string;
   visualHint: string | null;
   referenceImage: string | null;
+  referenceImageHistory?: string | null;
   onUpdate: () => void;
   batchGenerating?: boolean;
   scope?: string;
@@ -37,6 +38,7 @@ export function CharacterCard({
   description,
   visualHint,
   referenceImage,
+  referenceImageHistory,
   onUpdate,
   batchGenerating,
   scope,
@@ -120,15 +122,57 @@ export function CharacterCard({
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         )}
-        {referenceImage ? (
-          <div className="w-full aspect-video overflow-hidden rounded-xl cursor-pointer" onClick={() => setLightbox(true)}>
-            <img
-              src={uploadUrl(referenceImage)}
-              alt={name}
-              className="w-full h-full object-cover"
-            />
-          </div>
-        ) : isGenerating ? (
+        {referenceImage ? (() => {
+          let history: string[] = [];
+          try { history = JSON.parse(referenceImageHistory || "[]"); } catch {}
+          if (history.length === 0 && referenceImage) history = [referenceImage];
+          const currentIdx = history.indexOf(referenceImage);
+          const showArrows = history.length > 1;
+          async function switchTo(newPath: string) {
+            await apiFetch(`/api/projects/${projectId}/characters/${id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ referenceImage: newPath }),
+            });
+            onUpdate();
+          }
+          return (
+            <div className="relative w-full aspect-video overflow-hidden rounded-xl cursor-pointer group" onClick={() => setLightbox(true)}>
+              <img
+                src={uploadUrl(referenceImage)}
+                alt={name}
+                className="w-full h-full object-cover"
+              />
+              {showArrows && (
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const next = (currentIdx - 1 + history.length) % history.length;
+                      switchTo(history[next]);
+                    }}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const next = (currentIdx + 1) % history.length;
+                      switchTo(history[next]);
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                  <span className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded bg-black/60 px-2 py-0.5 text-[10px] text-white">
+                    {currentIdx + 1}/{history.length}
+                  </span>
+                </>
+              )}
+            </div>
+          );
+        })() : isGenerating ? (
           <div className="w-full aspect-video rounded-xl animate-shimmer" />
         ) : (
           <div className="flex w-full aspect-video items-center justify-center rounded-xl bg-gradient-to-br from-primary/15 to-accent/10 text-3xl font-bold text-primary">

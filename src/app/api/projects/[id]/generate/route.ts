@@ -644,9 +644,22 @@ async function handleSingleCharacterImage(
       aspectRatio: "16:9",
       quality: "hd",
     });
+
+    // Append to history
+    let history: string[] = [];
+    try {
+      history = JSON.parse(character.referenceImageHistory || "[]");
+    } catch {}
+    if (character.referenceImage && !history.includes(character.referenceImage)) {
+      history.push(character.referenceImage);
+    }
+    if (!history.includes(imagePath)) {
+      history.push(imagePath);
+    }
+
     await db
       .update(characters)
-      .set({ referenceImage: imagePath })
+      .set({ referenceImage: imagePath, referenceImageHistory: JSON.stringify(history) })
       .where(eq(characters.id, characterId));
 
     // Mark downstream ref images stale: any shot's referenceImages that include this character
@@ -724,9 +737,16 @@ async function handleBatchCharacterImage(
           aspectRatio: "16:9",
           quality: "hd",
         });
+
+        // Append to history
+        let history: string[] = [];
+        try { history = JSON.parse(character.referenceImageHistory || "[]"); } catch {}
+        if (character.referenceImage && !history.includes(character.referenceImage)) history.push(character.referenceImage);
+        if (!history.includes(imagePath)) history.push(imagePath);
+
         await db
           .update(characters)
-          .set({ referenceImage: imagePath })
+          .set({ referenceImage: imagePath, referenceImageHistory: JSON.stringify(history) })
           .where(eq(characters.id, character.id));
         return { characterId: character.id, name: character.name, imagePath, status: "ok" };
       } catch (err) {
