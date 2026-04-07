@@ -429,7 +429,7 @@ export function ShotCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "single_ref_image_generate",
-          payload: { shotId: id, refImageId: refId },
+          payload: { shotId: id, refImageId: refId, ratio: videoRatio },
           modelConfig,
         }),
       });

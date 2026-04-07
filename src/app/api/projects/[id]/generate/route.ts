@@ -2802,11 +2802,14 @@ async function handleSingleRefImageGenerate(
 
   console.log(`[SingleRefImage] Shot ${shot.sequence}: using ${relevantChars.length} chars (${relevantChars.map(c => c.name).join(", ")}) for ref "${refImageId}"`);
 
+  const ratio = (payload?.ratio as string) || "16:9";
+  const imgOpts = ratioToImageOpts(ratio);
   const imageProvider = resolveImageProvider(modelConfig);
 
   try {
     const imagePath = await imageProvider.generateImage(fullPrompt, {
       quality: "hd",
+      ...imgOpts,
       referenceImages: charRefs,
     });
 
