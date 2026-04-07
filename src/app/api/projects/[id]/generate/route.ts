@@ -1857,13 +1857,23 @@ async function handleBatchSceneFrame(
         : charsWithRefs.slice(0, 3);
       const shotCharRefs = relevantChars.map((c) => c.referenceImage as string);
 
-      console.log(`[BatchRefImage] Shot ${shot.sequence}: ${targets.length} refs, ${relevantChars.length} chars: ${relevantChars.map(c => c.name).join(", ")}`);
+      // Build character mapping prompt prefix (Toonflow-style)
+      const charMapping = relevantChars.map((c, i) => `图片${i + 1}=${c.name}`).join("，");
+      const charDescriptions = relevantChars
+        .map((c) => `${c.name}: ${c.description || ""}`)
+        .join("\n");
+      const promptPrefix = relevantChars.length > 0
+        ? `角色映射：${charMapping}\n\n角色描述：\n${charDescriptions}\n\n严格按照参考图的角色外观（面部、服装、发型）生成。\n\n场景描述：`
+        : "";
+
+      console.log(`[BatchSceneFrame] Shot ${shot.sequence}: ${targets.length} refs, ${relevantChars.length} chars: ${relevantChars.map(c => c.name).join(", ")}`);
 
       // Generate all ref images for this shot concurrently
       const genResults = await Promise.all(
         targets.map(async (entry) => {
           try {
-            const imagePath = await imageProvider.generateImage(entry.prompt, {
+            const fullPrompt = promptPrefix + entry.prompt;
+            const imagePath = await imageProvider.generateImage(fullPrompt, {
               quality: "hd",
               ...imageOpts,
               referenceImages: shotCharRefs,
@@ -2668,9 +2678,7 @@ async function handleBatchRefImageGenerate(
 
   // Get character references
   const projectCharacters = await getEpisodeCharacters(projectId, episodeId);
-  const charRefs = projectCharacters
-    .filter((c) => !!c.referenceImage)
-    .map((c) => c.referenceImage as string);
+  const charsWithRefs = projectCharacters.filter((c) => !!c.referenceImage);
 
   const imageProvider = resolveImageProvider(modelConfig, versionedUploadDir);
 
@@ -2697,10 +2705,27 @@ async function handleBatchRefImageGenerate(
       try {
         const batchRatio = (payload?.ratio as string) || "16:9";
         const batchImageOpts = ratioToImageOpts(batchRatio);
-        const imagePath = await imageProvider.generateImage(entry.prompt, {
+
+        // Smart character matching for THIS entry
+        const entryStoredChars = entry.characters || [];
+        const entryRelevantChars = entryStoredChars.length > 0
+          ? charsWithRefs.filter((c) => entryStoredChars.includes(c.name))
+          : charsWithRefs.slice(0, 3);
+        const entryCharRefs = entryRelevantChars.map((c) => c.referenceImage as string);
+
+        // Build prompt with explicit character mapping
+        const charMapping = entryRelevantChars.map((c, i) => `图片${i + 1}=${c.name}`).join("，");
+        const charDescriptions = entryRelevantChars
+          .map((c) => `${c.name}: ${c.description || ""}`)
+          .join("\n");
+        const fullPrompt = entryRelevantChars.length > 0
+          ? `角色映射：${charMapping}\n\n角色描述：\n${charDescriptions}\n\n严格按照参考图的角色外观（面部、服装、发型）生成。\n\n场景描述：${entry.prompt}`
+          : entry.prompt;
+
+        const imagePath = await imageProvider.generateImage(fullPrompt, {
           quality: "hd",
           ...batchImageOpts,
-          referenceImages: charRefs,
+          referenceImages: entryCharRefs,
         });
         entry.imagePath = imagePath;
         entry.status = "generated";
@@ -2765,12 +2790,22 @@ async function handleSingleRefImageGenerate(
     : charsWithRefs.slice(0, 3);
   const charRefs = relevantChars.map((c) => c.referenceImage as string);
 
-  console.log(`[SingleRefImage] Shot ${shot.sequence}: using ${relevantChars.length} chars for ref "${refImageId}"`);
+  // Build prompt with explicit character mapping (Toonflow-style)
+  const charMapping = relevantChars.map((c, i) => `图片${i + 1}=${c.name}`).join("，");
+  const charDescriptions = relevantChars
+    .map((c) => `${c.name}: ${c.description || ""}`)
+    .join("\n");
+
+  const fullPrompt = relevantChars.length > 0
+    ? `角色映射：${charMapping}\n\n角色描述：\n${charDescriptions}\n\n严格按照参考图的角色外观（面部、服装、发型）生成。\n\n场景描述：${entry.prompt}`
+    : entry.prompt;
+
+  console.log(`[SingleRefImage] Shot ${shot.sequence}: using ${relevantChars.length} chars (${relevantChars.map(c => c.name).join(", ")}) for ref "${refImageId}"`);
 
   const imageProvider = resolveImageProvider(modelConfig);
 
   try {
-    const imagePath = await imageProvider.generateImage(entry.prompt, {
+    const imagePath = await imageProvider.generateImage(fullPrompt, {
       quality: "hd",
       referenceImages: charRefs,
     });
@@ -2919,6 +2954,15 @@ async function handleSingleShotRefImageGenerateAll(
     : charsWithRefs.slice(0, 3); // fallback for legacy data without characters field
   const charRefsForShot = relevantChars.map((c) => c.referenceImage as string);
 
+  // Build character mapping prompt prefix
+  const charMapping = relevantChars.map((c, i) => `图片${i + 1}=${c.name}`).join("，");
+  const charDescriptions = relevantChars
+    .map((c) => `${c.name}: ${c.description || ""}`)
+    .join("\n");
+  const promptPrefix = relevantChars.length > 0
+    ? `角色映射：${charMapping}\n\n角色描述：\n${charDescriptions}\n\n严格按照参考图的角色外观（面部、服装、发型）生成。\n\n场景描述：`
+    : "";
+
   console.log(`[RefImageGenAll] Shot ${shot.sequence}: using ${relevantChars.length} chars: ${relevantChars.map(c => c.name).join(", ")}`);
 
   const ratio = (payload?.ratio as string) || "16:9";
@@ -2927,13 +2971,12 @@ async function handleSingleShotRefImageGenerateAll(
 
   let generated = 0;
   for (const entry of pending) {
-    const entryCharRefs = charRefsForShot;
-
     try {
-      const imagePath = await imageProvider.generateImage(entry.prompt, {
+      const fullPrompt = promptPrefix + entry.prompt;
+      const imagePath = await imageProvider.generateImage(fullPrompt, {
         quality: "hd",
         ...imgOpts,
-        referenceImages: entryCharRefs,
+        referenceImages: charRefsForShot,
       });
       entry.imagePath = imagePath;
       entry.status = "generated";
